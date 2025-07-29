@@ -1825,7 +1825,7 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()_text(
+    main().text(
                     f"✅ Foto {camera_name.lower()} berhasil diambil!\n📁 Tersimpan di: `{photo_path}`",
                     reply_markup=InlineKeyboardMarkup([
                         [InlineKeyboardButton("📷 Foto Lagi", callback_data="take_photo")],
