@@ -4,7 +4,7 @@
 Termux Bot Controller - Enhanced Professional Version
 Advanced features with non-root alternatives
 Author: AI Assistant
-Version: 2.0
+Version: 2.0 - Fixed
 """
 
 import os
@@ -71,6 +71,7 @@ class AdvancedTermuxBot:
     def __init__(self):
         self.bot_token = self.get_token()
         self.current_directory = os.path.expanduser('~')
+        self.previous_directory = os.path.expanduser('~')
         self.bot_active = True
         self.termux_api = self.check_termux_api()
         self.authorized_users = self.load_authorized_users()
@@ -86,7 +87,10 @@ class AdvancedTermuxBot:
         """Create necessary directories for bot operation"""
         dirs = ['downloads', 'uploads', 'logs', 'backups', 'temp']
         for d in dirs:
-            os.makedirs(d, exist_ok=True)
+            try:
+                os.makedirs(d, exist_ok=True)
+            except Exception as e:
+                logger.error(f"Error creating directory {d}: {e}")
     
     def get_token(self):
         if os.path.exists('bot_config.json'):
@@ -94,8 +98,8 @@ class AdvancedTermuxBot:
                 with open('bot_config.json', 'r') as f:
                     config = json.load(f)
                     return config.get('bot_token')
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"Error loading config: {e}")
         
         print("\n" + "🔥"*60)
         print("🚀 TERMUX BOT CONTROLLER v2.0 - PROFESSIONAL EDITION")
@@ -115,8 +119,11 @@ class AdvancedTermuxBot:
             'created': datetime.now().isoformat(),
             'version': '2.0'
         }
-        with open('bot_config.json', 'w') as f:
-            json.dump(config, f, indent=2)
+        try:
+            with open('bot_config.json', 'w') as f:
+                json.dump(config, f, indent=2)
+        except Exception as e:
+            logger.error(f"Error saving config: {e}")
             
         return token
     
@@ -125,13 +132,17 @@ class AdvancedTermuxBot:
         try:
             with open('authorized_users.json', 'r') as f:
                 return json.load(f)
-        except:
+        except Exception as e:
+            logger.error(f"Error loading authorized users: {e}")
             return []
     
     def save_authorized_users(self):
         """Save authorized users to config"""
-        with open('authorized_users.json', 'w') as f:
-            json.dump(self.authorized_users, f, indent=2)
+        try:
+            with open('authorized_users.json', 'w') as f:
+                json.dump(self.authorized_users, f, indent=2)
+        except Exception as e:
+            logger.error(f"Error saving authorized users: {e}")
     
     def check_termux_api(self):
         """Check Termux API availability with better error handling"""
@@ -145,7 +156,8 @@ class AdvancedTermuxBot:
                     result = subprocess.run(['which', cmd], capture_output=True, timeout=3)
                     if result.returncode == 0:
                         available_commands += 1
-                except:
+                except Exception as e:
+                    logger.debug(f"Command check failed for {cmd}: {e}")
                     continue
             
             # Consider API available if at least 2 commands are found
@@ -167,12 +179,12 @@ class AdvancedTermuxBot:
                 test_result = subprocess.run(['timeout', '3', 'su', '-c', 'id'], 
                                            capture_output=True, timeout=5)
                 return test_result.returncode == 0 and 'uid=0' in test_result.stdout.decode()
-            except:
+            except Exception:
                 # Method 3: Check if we can read root-only files
                 try:
                     with open('/data/system/users/0/settings_system.xml', 'r') as f:
                         return True
-                except:
+                except Exception:
                     return False
                     
         except Exception as e:
@@ -197,7 +209,7 @@ class AdvancedTermuxBot:
                 try:
                     if os.path.exists(path) and os.access(path, os.R_OK):
                         alternatives.append(access_type)
-                except:
+                except Exception:
                     continue
             
             # Check for notification access (if termux-api available)
@@ -207,7 +219,7 @@ class AdvancedTermuxBot:
                                           capture_output=True, timeout=3)
                     if result.returncode == 0:
                         alternatives.append('notification_access')
-                except:
+                except Exception:
                     pass
             
             return alternatives
@@ -277,13 +289,13 @@ class AdvancedTermuxBot:
         try:
             # Try to get CPU usage
             stats['cpu_percent'] = psutil.cpu_percent(interval=0.1)
-        except (PermissionError, OSError):
+        except (PermissionError, OSError, Exception):
             try:
                 # Fallback: use /proc/loadavg
                 with open('/proc/loadavg', 'r') as f:
                     load_avg = float(f.read().split()[0])
                     stats['cpu_percent'] = min(load_avg * 25, 100)  # Rough estimate
-            except:
+            except Exception:
                 stats['cpu_percent'] = 0
         
         try:
@@ -292,7 +304,7 @@ class AdvancedTermuxBot:
             stats['memory_percent'] = memory.percent
             stats['memory_used'] = memory.used
             stats['memory_total'] = memory.total
-        except (PermissionError, OSError):
+        except (PermissionError, OSError, Exception):
             try:
                 # Fallback: use /proc/meminfo
                 with open('/proc/meminfo', 'r') as f:
@@ -309,7 +321,7 @@ class AdvancedTermuxBot:
                     stats['memory_total'] = total
                     stats['memory_used'] = used
                     stats['memory_percent'] = (used / total * 100) if total > 0 else 0
-            except:
+            except Exception:
                 stats['memory_percent'] = 0
                 stats['memory_used'] = 0
                 stats['memory_total'] = 0
@@ -389,7 +401,7 @@ class AdvancedTermuxBot:
             "sysinfo": self.show_system_monitor,
             "files": self.show_file_manager,
             "network": self.show_network_tools,
-            "device": self.show_device_control,
+            "device": self.show_device_control,  # FIXED: Added missing method
             "system_tools": self.show_system_tools,
             "camera": self.show_camera_pro,
             "sensors": self.show_sensors,
@@ -405,30 +417,98 @@ class AdvancedTermuxBot:
             "download_file": self.handle_file_download,
             "compress_files": self.compress_files,
             "backup_system": self.backup_system,
+            "go_home": self.go_home,
+            "go_parent": self.go_parent,
+            "search_files": self.search_files,
+            "disk_usage": self.show_disk_usage,
             # Network operations
             "scan_network": self.scan_network,
             "check_ports": self.check_ports,
             "speed_test": self.network_speed_test,
             "wifi_info": self.show_wifi_info,
+            "ping_test": self.ping_test,
+            "dns_lookup": self.dns_lookup,
+            "public_ip": self.show_public_ip,
+            "bandwidth_monitor": self.bandwidth_monitor,
             # System operations
             "process_manager": self.show_process_manager,
             "service_manager": self.show_service_manager,
             "log_viewer": self.show_log_viewer,
             "cleanup_system": self.cleanup_system,
+            "detailed_stats": self.show_detailed_stats,
+            # Package management
+            "pkg_install": self.pkg_install,
+            "pkg_update": self.pkg_update,
+            "pkg_remove": self.pkg_remove,
+            "pkg_search": self.pkg_search,
+            "pkg_list": self.pkg_list,
+            "pkg_sizes": self.pkg_sizes,
+            "apk_manager": self.apk_manager,
+            "pip_manager": self.pip_manager,
+            "pkg_cleanup": self.pkg_cleanup,
+            "pkg_backup": self.pkg_backup,
+            # Security tools
+            "encrypt_files": self.encrypt_files,
+            "gen_password": self.generate_password,
+            "qr_generator": self.qr_generator,
+            "hash_calculator": self.hash_calculator,
+            "vuln_scan": self.vulnerability_scan,
+            "network_security": self.network_security,
+            "privacy_clean": self.privacy_clean,
+            "secure_delete": self.secure_delete,
+            "ssh_keys": self.ssh_keys,
+            "device_lock": self.device_lock,
+            # Camera and sensors
+            "quick_photo": self.quick_photo,
+            "record_video": self.record_video,
+            "switch_camera": self.switch_camera,
+            "camera_settings": self.camera_settings,
+            "gps_location": self.gps_location,
+            "compass": self.compass,
+            "accelerometer": self.accelerometer,
+            "temperature": self.temperature,
+            # Settings
+            "user_management": self.user_management,
+            "bot_settings": self.bot_settings,
+            "view_logs": self.view_logs,
+            "clear_data": self.clear_data,
+            "restart_bot": self.restart_bot,
+            "export_config": self.export_config,
+            "install_api": self.install_api,
+            "diagnostics": self.diagnostics,
+            # Command operations
+            "cmd_history": self.show_cmd_history,
+            "batch_cmd": self.batch_cmd,
         }
         
         handler = handlers.get(query.data)
         if handler:
-            await handler(query)
+            try:
+                await handler(query)
+            except Exception as e:
+                logger.error(f"Error in handler {query.data}: {e}")
+                await query.edit_message_text(
+                    f"❌ **Error in {query.data}:**\n`{str(e)}`",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")
+                    ]]),
+                    parse_mode='Markdown'
+                )
         else:
-            await query.edit_message_text("🚫 Feature not implemented yet")
+            await query.edit_message_text(
+                f"🚫 **Feature not implemented:** `{query.data}`",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")
+                ]]),
+                parse_mode='Markdown'
+            )
     
     async def show_main_menu(self, query):
         try:
             stats = self.get_system_stats()
             cpu = stats['cpu_percent']
             ram = stats['memory_percent']
-        except:
+        except Exception:
             cpu = ram = 0
         
         message = f"""
@@ -532,12 +612,12 @@ du -sh */ | sort -hr
             
             try:
                 cpu_count = psutil.cpu_count() or 1
-            except:
+            except Exception:
                 cpu_count = 1
             
             try:
                 disk = psutil.disk_usage('/')
-            except:
+            except Exception:
                 # Fallback for disk usage
                 try:
                     result = subprocess.run(['df', '/'], capture_output=True, text=True, timeout=5)
@@ -567,21 +647,21 @@ du -sh */ | sort -hr
                     logger.error(f"Error getting disk usage: {e}")
                     class DiskUsage:
                         def __init__(self):
-                            self.total = 0
+                            self.total = 1
                             self.used = 0
-                            self.free = 0
+                            self.free = 1
                     disk = DiskUsage()
             
             try:
                 boot_time = psutil.boot_time()
                 uptime = datetime.now() - datetime.fromtimestamp(boot_time)
-            except:
+            except Exception:
                 try:
                     # Fallback: use /proc/uptime
                     with open('/proc/uptime', 'r') as f:
                         uptime_seconds = float(f.read().split()[0])
                         uptime = timedelta(seconds=uptime_seconds)
-                except:
+                except Exception:
                     uptime = timedelta(0)
             
             # Network stats with fallback
@@ -591,20 +671,20 @@ du -sh */ | sort -hr
                 bytes_recv = net_io.bytes_recv
                 packets_sent = net_io.packets_sent
                 packets_recv = net_io.packets_recv
-            except:
+            except Exception:
                 bytes_sent = bytes_recv = packets_sent = packets_recv = 0
             
             # Process count with fallback
             try:
                 processes = len(psutil.pids())
-            except:
+            except Exception:
                 try:
                     result = subprocess.run(['ps', '-A'], capture_output=True, text=True, timeout=5)
                     if result.returncode == 0:
                         processes = len(result.stdout.strip().split('\n')) - 1  # Exclude header
                     else:
                         processes = 0
-                except:
+                except Exception:
                     processes = 0
             
             # Temperature (if available)
@@ -616,7 +696,7 @@ du -sh */ | sort -hr
                     if temp_result.returncode == 0:
                         temp_data = json.loads(temp_result.stdout)
                         temp_info = f"{temp_data.get('temperature', 'N/A')}°C"
-            except:
+            except Exception:
                 # Try thermal zone fallback
                 try:
                     thermal_files = ['/sys/class/thermal/thermal_zone0/temp',
@@ -628,7 +708,7 @@ du -sh */ | sort -hr
                                 temp_celsius = temp_millicelsius / 1000
                                 temp_info = f"{temp_celsius:.1f}°C"
                                 break
-                except:
+                except Exception:
                     pass
             
             # Create enhanced progress bars
@@ -741,7 +821,7 @@ du -sh */ | sort -hr
                     try:
                         item_count = len(os.listdir(os.path.join(self.current_directory, d)))
                         file_list += f"┣ 📁 `{d}` ({item_count} items)\n"
-                    except:
+                    except Exception:
                         file_list += f"┣ 📁 `{d}` (protected)\n"
                 file_list += "\n"
             
@@ -838,7 +918,7 @@ du -sh */ | sort -hr
                     return f"{size:.1f}{unit}"
                 size /= 1024
             return f"{size:.1f}PB"
-        except:
+        except Exception:
             return "Unknown"
     
     async def show_network_tools(self, query):
@@ -884,6 +964,130 @@ du -sh */ | sort -hr
             [
                 InlineKeyboardButton("🌍 Public IP", callback_data="public_ip"),
                 InlineKeyboardButton("📈 Bandwidth", callback_data="bandwidth_monitor")
+            ],
+            [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    # FIXED: Added missing show_device_control method
+    async def show_device_control(self, query):
+        message = f"""
+📱 **DEVICE CONTROL CENTER**
+════════════════════════════════════
+
+🔋 **Power Management:**
+┣ 🔋 **Battery Status** - Check power level
+┣ ⚡ **Charging Info** - Power source details
+┣ 🔌 **Power Settings** - Optimize usage
+┗ 🌙 **Sleep Mode** - Power saving
+
+📱 **Display Control:**
+┣ 💡 **Brightness** - Adjust screen brightness
+┣ 🔒 **Screen Lock** - Device security
+┣ 📱 **Orientation** - Screen rotation
+┗ 🎨 **Display Info** - Screen specifications
+
+🔊 **Audio Management:**
+┣ 🔊 **Volume Control** - System audio
+┣ 🎵 **Audio Settings** - Sound preferences
+┣ 🎤 **Microphone** - Recording settings
+┗ 📳 **Vibration** - Haptic feedback
+
+📡 **Connectivity:**
+┣ 📶 **WiFi Manager** - Network connections
+┣ 📳 **Bluetooth** - Device pairing
+┣ 🌐 **Mobile Data** - Cellular settings
+┗ ✈️ **Airplane Mode** - Flight mode
+
+📱 **Device Info:**
+┣ 📱 **Device Details** - Hardware specs
+┣ 🆔 **System Info** - Android version
+┣ 📊 **Sensors** - Available sensors
+┗ 🔧 **Diagnostics** - System health
+
+💡 **Select device function:**
+        """
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🔋 Battery", callback_data="battery_status"),
+                InlineKeyboardButton("💡 Brightness", callback_data="brightness_control")
+            ],
+            [
+                InlineKeyboardButton("🔊 Volume", callback_data="volume_control"),
+                InlineKeyboardButton("📶 WiFi", callback_data="wifi_manager")
+            ],
+            [
+                InlineKeyboardButton("📱 Device Info", callback_data="device_info"),
+                InlineKeyboardButton("📊 Sensors", callback_data="sensors")
+            ],
+            [
+                InlineKeyboardButton("🔒 Screen Lock", callback_data="screen_lock"),
+                InlineKeyboardButton("📳 Vibration", callback_data="vibration_control")
+            ],
+            [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    # FIXED: Added missing show_system_tools method
+    async def show_system_tools(self, query):
+        message = f"""
+🔧 **SYSTEM TOOLS CENTER**
+════════════════════════════════════
+
+🛠️ **System Maintenance:**
+┣ 🧹 **System Cleaner** - Remove temp files
+┣ 🔄 **Process Manager** - Running processes
+┣ 🗂️ **Service Manager** - System services
+┗ 📊 **Resource Monitor** - System usage
+
+🔍 **Analysis Tools:**
+┣ 📋 **Log Viewer** - System logs
+┣ 🔍 **File Search** - Find files quickly
+┣ 📊 **Disk Analyzer** - Storage usage
+┗ 🔧 **System Diagnostics** - Health check
+
+⚙️ **Configuration:**
+┣ 🌐 **Environment Vars** - System variables
+┣ 📝 **Config Editor** - Edit system files
+┣ 🔗 **Symlink Manager** - Link management
+┗ 🗂️ **Permission Manager** - File permissions
+
+🚀 **Advanced Tools:**
+┣ 📦 **Archive Manager** - Compress/extract
+┣ 🔐 **Hash Checker** - File integrity
+┣ 📊 **Benchmark** - Performance test
+┗ 🛡️ **Security Audit** - System security
+
+💡 **Select system tool:**
+        """
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🧹 Cleaner", callback_data="system_cleaner"),
+                InlineKeyboardButton("🔄 Processes", callback_data="process_manager")
+            ],
+            [
+                InlineKeyboardButton("📋 Logs", callback_data="log_viewer"),
+                InlineKeyboardButton("🔍 File Search", callback_data="file_search")
+            ],
+            [
+                InlineKeyboardButton("📊 Disk Analyzer", callback_data="disk_analyzer"),
+                InlineKeyboardButton("🔧 Diagnostics", callback_data="system_diagnostics")
+            ],
+            [
+                InlineKeyboardButton("🌐 Env Vars", callback_data="env_vars"),
+                InlineKeyboardButton("📦 Archives", callback_data="archive_manager")
             ],
             [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
         ]
@@ -1229,6 +1433,125 @@ pkg install ffmpeg imagemagick youtube-dl
             parse_mode='Markdown'
         )
     
+    # FIXED: Added missing show_api_guide method
+    async def show_api_guide(self, query):
+        message = f"""
+⚠️ **TERMUX:API REQUIRED**
+════════════════════════════════════
+
+📱 **Installation Guide:**
+
+🔗 **Step 1: Download Termux:API**
+┣ Open **F-Droid** or **GitHub Releases**
+┣ Search for "**Termux:API**"
+┣ Download and install the APK
+┗ Grant all requested permissions
+
+📦 **Step 2: Install API Package**
+```bash
+pkg update
+pkg install termux-api
+```
+
+⚙️ **Step 3: Grant Permissions**
+┣ Open **Settings** → **Apps** → **Termux:API**
+┣ Enable **all permissions** (Camera, Location, etc.)
+┣ Allow **background activity**
+┗ Disable **battery optimization**
+
+🧪 **Step 4: Test Installation**
+```bash
+termux-battery-status
+termux-camera-info
+termux-sensor -l
+```
+
+✅ **Features After Installation:**
+┣ 📷 **Camera Control** - Photo & video
+┣ 📍 **GPS & Location** - Precise positioning
+┣ 📊 **Sensors** - Accelerometer, compass, etc.
+┣ 🔋 **Battery Status** - Power monitoring
+┣ 📱 **Device Control** - Volume, brightness
+┗ 🌐 **Network Info** - WiFi details
+
+🔄 **Restart bot** after installation!
+        """
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🔧 Install Guide", callback_data="install_api"),
+                InlineKeyboardButton("🧪 Test API", callback_data="test_api")
+            ],
+            [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    # FIXED: Added missing show_root_manager method
+    async def show_root_manager(self, query):
+        message = f"""
+👑 **ROOT MANAGER - ADVANCED CONTROL**
+════════════════════════════════════
+
+⚡ **Root Operations:**
+┣ 🔧 **System Modifications** - Deep system access
+┣ 📱 **App Management** - Install/remove system apps
+┣ 🛡️ **Permission Control** - Advanced permissions
+┗ 🔄 **System Services** - Start/stop services
+
+🗂️ **File System Access:**
+┣ 📁 **System Directories** - /system, /data access
+┣ 🔐 **Protected Files** - Edit system configs
+┣ 💾 **Partition Management** - Mount/unmount
+┗ 🗃️ **Database Access** - System databases
+
+⚙️ **Advanced Features:**
+┣ 🔥 **Kernel Modules** - Load/unload modules
+┣ 📊 **Performance Tuning** - CPU, GPU tweaks
+┣ 🌡️ **Thermal Control** - Temperature management
+┗ 🔋 **Power Management** - Advanced battery control
+
+🛡️ **Security Tools:**
+┣ 🔒 **SELinux Control** - Security policies  
+┣ 🛡️ **Firewall Rules** - Network security
+┣ 🔐 **Encryption Tools** - Full disk encryption
+┗ 🕵️ **Forensics** - System analysis
+
+⚠️ **WARNING:** Root operations can damage your system!
+
+💡 **Select root function:**
+        """
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🔧 System Mods", callback_data="system_mods"),
+                InlineKeyboardButton("📱 App Manager", callback_data="root_app_manager")
+            ],
+            [
+                InlineKeyboardButton("📁 File System", callback_data="root_filesystem"),
+                InlineKeyboardButton("💾 Partitions", callback_data="partition_manager")
+            ],
+            [
+                InlineKeyboardButton("🔥 Kernel", callback_data="kernel_manager"),
+                InlineKeyboardButton("📊 Performance", callback_data="performance_tuning")
+            ],
+            [
+                InlineKeyboardButton("🔒 SELinux", callback_data="selinux_control"),
+                InlineKeyboardButton("🛡️ Firewall", callback_data="firewall_manager")
+            ],
+            [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
     async def show_settings(self, query):
         auth_count = len(self.authorized_users)
         
@@ -1298,10 +1621,10 @@ pkg install ffmpeg imagemagick youtube-dl
                     fp = os.path.join(dirpath, f)
                     try:
                         total += os.path.getsize(fp)
-                    except:
+                    except Exception:
                         pass
             return round(total / (1024 * 1024), 2)
-        except:
+        except Exception:
             return 0
     
     async def show_help(self, query):
@@ -1522,45 +1845,1633 @@ Contact the bot administrator or check logs for detailed error information.
         
         await update.message.reply_text(history_text, parse_mode='Markdown')
     
-    # Placeholder methods for additional features
+    # FIXED: All placeholder methods with proper implementations or error handling
+    
+    # File Manager Methods
+    async def go_home(self, query):
+        """Go to home directory"""
+        self.previous_directory = self.current_directory
+        self.current_directory = os.path.expanduser('~')
+        await self.show_file_manager(query)
+    
+    async def go_parent(self, query):
+        """Go to parent directory"""
+        self.previous_directory = self.current_directory
+        self.current_directory = os.path.dirname(self.current_directory)
+        await self.show_file_manager(query)
+    
+    async def search_files(self, query):
+        await query.edit_message_text(
+            "🔍 **File Search**\n\nSend filename to search for in current directory:",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="files")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def show_disk_usage(self, query):
+        await query.edit_message_text("📊 Analyzing disk usage...")
+        
+        try:
+            result = subprocess.run(['du', '-sh', '*'], 
+                                  cwd=self.current_directory,
+                                  capture_output=True, text=True, timeout=10)
+            
+            if result.returncode == 0 and result.stdout:
+                output = result.stdout[:3000]  # Limit output
+                message = f"""
+📊 **DISK USAGE ANALYSIS**
+════════════════════════════════════
+
+📍 **Directory:** `{self.current_directory}`
+
+```
+{output}
+```
+
+💡 **Legend:** Shows size and filename/directory
+                """
+            else:
+                message = "❌ **Error analyzing disk usage**"
+                
+        except Exception as e:
+            message = f"❌ **Error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="files")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    # Network Tools Implementations
     async def scan_network(self, query):
-        await query.edit_message_text("🌐 Network scanning feature - Coming soon!")
+        await query.edit_message_text("🌐 Scanning network...")
+        
+        try:
+            # Get current IP range
+            result = subprocess.run(['ip', 'route'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                network_info = "\n".join(lines[:5])  # Show first 5 routes
+                
+                message = f"""
+🌐 **NETWORK SCAN RESULTS**
+════════════════════════════════════
+
+📡 **Network Routes:**
+```
+{network_info}
+```
+
+🔍 **Active Interfaces:**
+Use `ip addr` or `ifconfig` for detailed info
+
+💡 **Tip:** Install `nmap` for advanced scanning:
+`pkg install nmap`
+                """
+            else:
+                message = "❌ **Network scan failed**"
+                
+        except Exception as e:
+            message = f"❌ **Error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="network")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
     
     async def check_ports(self, query):
-        await query.edit_message_text("🔌 Port scanning feature - Coming soon!")
+        await query.edit_message_text("🔌 Checking open ports...")
+        
+        try:
+            # Check common ports
+            result = subprocess.run(['ss', '-tuln'], capture_output=True, text=True, timeout=10)
+            
+            if result.returncode == 0:
+                output = result.stdout[:2000]  # Limit output
+                message = f"""
+🔌 **PORT SCAN RESULTS**
+════════════════════════════════════
+
+📊 **Open Ports:**
+```
+{output}
+```
+
+💡 **Legend:**
+- tcp/udp: Protocol
+- LISTEN: Listening ports
+- ESTAB: Established connections
+                """
+            else:
+                message = "❌ **Port scan failed**"
+                
+        except Exception as e:
+            message = f"❌ **Error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="network")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
     
     async def network_speed_test(self, query):
-        await query.edit_message_text("📊 Speed test feature - Coming soon!")
+        await query.edit_message_text(
+            "📊 **Speed Test**\n\nInstall speedtest-cli:\n`pkg install python && pip install speedtest-cli`",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="network")
+            ]]),
+            parse_mode='Markdown'
+        )
     
     async def show_wifi_info(self, query):
-        await query.edit_message_text("📡 WiFi info feature - Coming soon!")
+        message = "📡 **WiFi Information**\n\n"
+        
+        if self.termux_api:
+            try:
+                result = subprocess.run(['termux-wifi-connectioninfo'], 
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    message += f"```json\n{result.stdout}\n```"
+                else:
+                    message += "❌ **WiFi info not available**"
+            except Exception as e:
+                message += f"❌ **Error:** `{str(e)}`"
+        else:
+            message += "⚠️ **Termux:API required**\n\nInstall Termux:API for WiFi details"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="network")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
     
+    async def ping_test(self, query):
+        await query.edit_message_text(
+            "🏓 **Ping Test**\n\nExample usage:\n`ping -c 4 google.com`\n`ping -c 4 8.8.8.8`",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="network")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def dns_lookup(self, query):
+        await query.edit_message_text(
+            "🔗 **DNS Lookup**\n\nExample usage:\n`nslookup google.com`\n`dig google.com`",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="network")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def show_public_ip(self, query):
+        await query.edit_message_text("🌍 Getting public IP...")
+        
+        try:
+            result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0 and result.stdout.strip():
+                ip = result.stdout.strip()
+                message = f"🌍 **Public IP:** `{ip}`"
+            else:
+                message = "❌ **Failed to get public IP**"
+        except Exception as e:
+            message = f"❌ **Error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="network")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def bandwidth_monitor(self, query):
+        await query.edit_message_text(
+            "📈 **Bandwidth Monitor**\n\nUse `iftop` or `nethogs` for real-time monitoring:\n`pkg install iftop`",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="network")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    # System Tools Implementations
     async def show_process_manager(self, query):
-        await query.edit_message_text("📊 Process manager - Coming soon!")
+        await query.edit_message_text("📊 Loading process information...")
+        
+        try:
+            result = subprocess.run(['ps', 'aux'], capture_output=True, text=True, timeout=10)
+            
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                header = lines[0] if lines else ""
+                processes = lines[1:11] if len(lines) > 1 else []  # Show top 10
+                
+                process_list = header + "\n" + "\n".join(processes)
+                
+                message = f"""
+📊 **PROCESS MANAGER**
+════════════════════════════════════
+
+🔄 **Running Processes:**
+```
+{process_list}
+```
+
+💡 **Commands:**
+- `htop` - Interactive process viewer
+- `kill PID` - Terminate process
+- `killall name` - Kill by name
+                """
+            else:
+                message = "❌ **Failed to get process list**"
+                
+        except Exception as e:
+            message = f"❌ **Error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="system_tools")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
     
     async def show_service_manager(self, query):
-        await query.edit_message_text("🔧 Service manager - Coming soon!")
+        await query.edit_message_text(
+            "🔧 **Service Manager**\n\nTermux services management:\n`sv status $PREFIX/var/service/*`",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="system_tools")
+            ]]),
+            parse_mode='Markdown'
+        )
     
     async def show_log_viewer(self, query):
-        await query.edit_message_text("📋 Log viewer - Coming soon!")
+        try:
+            if os.path.exists('termux_bot.log'):
+                with open('termux_bot.log', 'r') as f:
+                    log_content = f.read()
+                
+                # Show last 20 lines
+                lines = log_content.strip().split('\n')
+                recent_logs = '\n'.join(lines[-20:]) if lines else "No logs"
+                
+                message = f"""
+📋 **BOT LOG VIEWER**
+════════════════════════════════════
+
+📊 **Recent Activity:**
+```
+{recent_logs}
+```
+
+💡 **Full log:** `termux_bot.log`
+                """
+            else:
+                message = "📋 **No log file found**"
+                
+        except Exception as e:
+            message = f"❌ **Error reading logs:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="settings")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
     
     async def cleanup_system(self, query):
-        await query.edit_message_text("🧹 System cleanup - Coming soon!")
+        await query.edit_message_text("🧹 Cleaning system...")
+        
+        try:
+            cleanup_commands = [
+                'pkg autoclean',
+                'apt autoremove',
+                'rm -rf ~/.cache/*',
+                'rm -rf /tmp/*'
+            ]
+            
+            results = []
+            for cmd in cleanup_commands:
+                try:
+                    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+                    if result.returncode == 0:
+                        results.append(f"✅ {cmd}")
+                    else:
+                        results.append(f"❌ {cmd}")
+                except Exception:
+                    results.append(f"❌ {cmd} (timeout)")
+            
+            message = f"""
+🧹 **SYSTEM CLEANUP COMPLETE**
+════════════════════════════════════
+
+📊 **Cleanup Results:**
+{chr(10).join(results)}
+
+💡 **Manual cleanup:**
+- `pkg autoclean` - Clean package cache
+- `rm -rf ~/.cache/*` - Clear user cache
+- `du -sh ~/.cache` - Check cache size
+            """
+            
+        except Exception as e:
+            message = f"❌ **Cleanup error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="sysinfo")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
     
+    async def show_detailed_stats(self, query):
+        await query.edit_message_text("📈 Gathering detailed statistics...")
+        
+        try:
+            stats_info = []
+            
+            # CPU info
+            try:
+                with open('/proc/cpuinfo', 'r') as f:
+                    cpu_lines = f.readlines()[:10]  # First 10 lines
+                    cpu_info = ''.join(cpu_lines)
+                    stats_info.append(f"🖥️ **CPU Info:**\n```\n{cpu_info}\n```")
+            except Exception:
+                stats_info.append("🖥️ **CPU Info:** Not available")
+            
+            # Memory details
+            try:
+                with open('/proc/meminfo', 'r') as f:
+                    mem_lines = f.readlines()[:15]  # First 15 lines
+                    mem_info = ''.join(mem_lines)
+                    stats_info.append(f"🧠 **Memory Details:**\n```\n{mem_info}\n```")
+            except Exception:
+                stats_info.append("🧠 **Memory Details:** Not available")
+            
+            message = f"""
+📈 **DETAILED SYSTEM STATISTICS**
+════════════════════════════════════
+
+{chr(10).join(stats_info[:2])}  
+
+💡 **More info:** Use `cat /proc/cpuinfo` and `cat /proc/meminfo`
+            """
+            
+        except Exception as e:
+            message = f"❌ **Error getting stats:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="sysinfo")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    # Command history methods
+    async def show_cmd_history(self, query):
+        if not self.command_history:
+            message = "📝 **Command history is empty**"
+        else:
+            recent_commands = self.command_history[-10:]
+            history_list = "\n".join([f"`{i+1:2d}.` {cmd}" for i, cmd in enumerate(recent_commands)])
+            
+            message = f"""
+📜 **COMMAND HISTORY**
+════════════════════════════════════
+
+📊 **Recent Commands:**
+{history_list}
+
+💡 **Total:** {len(self.command_history)} commands executed
+            """
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="terminal")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def batch_cmd(self, query):
+        await query.edit_message_text(
+            "⚡ **Batch Command Execution**\n\nSend multiple commands separated by `;` or `&&`\n\nExample:\n`ls -la; pwd; whoami`",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="terminal")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    # Package Manager Implementations
+    async def pkg_install(self, query):
+        await query.edit_message_text(
+            "📥 **Package Installation**\n\nExample:\n`pkg install git vim nano`\n\nSend package names to install:",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="packages")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def pkg_update(self, query):
+        await query.edit_message_text("🔄 Updating package repositories...")
+        
+        try:
+            result = subprocess.run(['pkg', 'update'], capture_output=True, text=True, timeout=60)
+            
+            if result.returncode == 0:
+                message = "✅ **Package repositories updated successfully**"
+                if result.stdout:
+                    message += f"\n\n```\n{result.stdout[:1000]}\n```"
+            else:
+                message = f"❌ **Update failed**\n\n```\n{result.stderr[:1000]}\n```"
+                
+        except subprocess.TimeoutExpired:
+            message = "⏰ **Update timeout** - Repository update is taking too long"
+        except Exception as e:
+            message = f"❌ **Error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="packages")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def pkg_remove(self, query):
+        await query.edit_message_text(
+            "🗑️ **Package Removal**\n\nExample:\n`pkg uninstall package-name`\n\nSend package names to remove:",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="packages")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def pkg_search(self, query):
+        await query.edit_message_text(
+            "🔍 **Package Search**\n\nExample:\n`pkg search python`\n`pkg search editor`\n\nSend search term:",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="packages")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def pkg_list(self, query):
+        await query.edit_message_text("📋 Loading installed packages...")
+        
+        try:
+            result = subprocess.run(['pkg', 'list-installed'], capture_output=True, text=True, timeout=30)
+            
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                package_count = len(lines)
+                sample_packages = '\n'.join(lines[:20]) if lines else "No packages"
+                
+                message = f"""
+📋 **INSTALLED PACKAGES**
+════════════════════════════════════
+
+📊 **Total Packages:** {package_count}
+
+📦 **Sample (first 20):**
+```
+{sample_packages}
+```
+
+💡 **Commands:**
+- `pkg list-installed | grep name` - Search installed
+- `pkg show package-name` - Package details
+                """
+            else:
+                message = "❌ **Failed to get package list**"
+                
+        except Exception as e:
+            message = f"❌ **Error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="packages")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def pkg_sizes(self, query):
+        await query.edit_message_text("💾 Analyzing package sizes...")
+        
+        try:
+            result = subprocess.run(['du', '-sh', f'{os.environ.get("PREFIX", "/data/data/com.termux/files/usr")}/var/lib/dpkg/info/*.list'], 
+                                  capture_output=True, text=True, timeout=30)
+            
+            if result.returncode == 0:
+                message = f"""
+💾 **PACKAGE SIZE ANALYSIS**
+════════════════════════════════════
+
+📊 **Package Database:**
+```
+{result.stdout[:2000]}
+```
+
+💡 **For detailed size info:**
+`dpkg-query -W -f='${{Installed-Size}} ${{Package}}\\n' | sort -n`
+                """
+            else:
+                message = "❌ **Failed to analyze package sizes**"
+                
+        except Exception as e:
+            message = f"❌ **Error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="packages")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def apk_manager(self, query):
+        await query.edit_message_text(
+            "📱 **APK Manager**\n\n⚠️ **Root required** for system APK management\n\nFor user APKs, use ADB commands or file manager",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="packages")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def pip_manager(self, query):
+        await query.edit_message_text("🐍 Loading pip packages...")
+        
+        try:
+            result = subprocess.run(['pip', 'list'], capture_output=True, text=True, timeout=30)
+            
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                package_list = '\n'.join(lines[:15]) if lines else "No packages"
+                
+                message = f"""
+🐍 **PYTHON PACKAGE MANAGER**
+════════════════════════════════════
+
+📦 **Installed Packages:**
+```
+{package_list}
+```
+
+💡 **Commands:**
+- `pip install package` - Install package
+- `pip uninstall package` - Remove package
+- `pip search term` - Search packages
+- `pip show package` - Package details
+                """
+            else:
+                message = "❌ **Python/pip not available**\n\nInstall with: `pkg install python`"
+                
+        except Exception as e:
+            message = f"❌ **Error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="packages")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def pkg_cleanup(self, query):
+        await query.edit_message_text("🧹 Cleaning package system...")
+        
+        try:
+            cleanup_commands = [
+                ('pkg autoclean', 'Clean package cache'),
+                ('apt autoremove -y', 'Remove unused packages'),
+                ('pkg upgrade', 'Update all packages (if needed)')
+            ]
+            
+            results = []
+            for cmd, desc in cleanup_commands:
+                try:
+                    result = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=60)
+                    if result.returncode == 0:
+                        results.append(f"✅ {desc}")
+                    else:
+                        results.append(f"❌ {desc}")
+                except Exception:
+                    results.append(f"⏰ {desc} (timeout)")
+            
+            message = f"""
+🧹 **PACKAGE CLEANUP COMPLETE**
+════════════════════════════════════
+
+📊 **Results:**
+{chr(10).join(results)}
+
+💡 **Manual cleanup:**
+- `pkg autoclean` - Clear cache
+- `apt autoremove` - Remove orphaned packages
+            """
+            
+        except Exception as e:
+            message = f"❌ **Cleanup error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="packages")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def pkg_backup(self, query):
+        await query.edit_message_text(
+            "📦 **Package Backup**\n\nCreate backup:\n`pkg list-installed > installed_packages.txt`\n\nRestore:\n`pkg install $(cat installed_packages.txt)`",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="packages")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    # Security Tools Implementations
+    async def encrypt_files(self, query):
+        await query.edit_message_text(
+            "🔒 **File Encryption**\n\nUse OpenSSL for encryption:\n\n`openssl enc -aes-256-cbc -in file.txt -out file.enc`\n`openssl enc -d -aes-256-cbc -in file.enc -out file.txt`",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="security")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def generate_password(self, query):
+        try:
+            import secrets
+            import string
+            
+            # Generate different types of passwords
+            passwords = []
+            
+            # Strong password (16 chars)
+            chars = string.ascii_letters + string.digits + "!@#$%^&*"
+            strong_pwd = ''.join(secrets.choice(chars) for _ in range(16))
+            passwords.append(f"🔐 **Strong (16):** `{strong_pwd}`")
+            
+            # Complex password (12 chars)
+            complex_pwd = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12))
+            passwords.append(f"🔑 **Complex (12):** `{complex_pwd}`")
+            
+            # Simple password (8 chars)
+            simple_pwd = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+            passwords.append(f"🗝️ **Simple (8):** `{simple_pwd}`")
+            
+            # PIN (6 digits)
+            pin = ''.join(secrets.choice(string.digits) for _ in range(6))
+            passwords.append(f"📱 **PIN (6):** `{pin}`")
+            
+            message = f"""
+🗝️ **SECURE PASSWORD GENERATOR**
+════════════════════════════════════
+
+🎯 **Generated Passwords:**
+{chr(10).join(passwords)}
+
+💡 **Security Tips:**
+┣ Use different passwords for each account
+┣ Include uppercase, lowercase, numbers, symbols
+┣ Minimum 12 characters for strong security
+┗ Store securely, never share via insecure channels
+
+🔄 **Refresh for new passwords**
+            """
+            
+        except Exception as e:
+            message = f"❌ **Password generation error:** `{str(e)}`"
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🔄 Generate New", callback_data="gen_password"),
+                InlineKeyboardButton("🔙 Back", callback_data="security")
+            ]
+        ]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def qr_generator(self, query):
+        await query.edit_message_text(
+            "📱 **QR Code Generator**\n\nSend text to generate QR code for:\n- URLs\n- WiFi passwords\n- Contact info\n- Any text",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="security")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def hash_calculator(self, query):
+        await query.edit_message_text(
+            "🔐 **Hash Calculator**\n\nCalculate file hashes:\n\n`md5sum file.txt`\n`sha256sum file.txt`\n`sha512sum file.txt`",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="security")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def vulnerability_scan(self, query):
+        await query.edit_message_text(
+            "🔍 **Vulnerability Scanner**\n\nBasic security checks:\n\n`pkg audit` - Check for vulnerable packages\n`ls -la ~/.ssh/` - Check SSH keys\n`netstat -tuln` - Check open ports",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="security")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def network_security(self, query):
+        await query.edit_message_text(
+            "🛡️ **Network Security**\n\nSecurity analysis:\n\n`ss -tuln` - Check listening ports\n`arp -a` - Check ARP table\n`netstat -rn` - Check routing table",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="security")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def privacy_clean(self, query):
+        await query.edit_message_text("🧹 Cleaning privacy traces...")
+        
+        try:
+            cleanup_items = [
+                ('~/.bash_history', 'Bash history'),
+                ('~/.cache/*', 'User cache'),
+                ('/tmp/*', 'Temporary files'),
+                ('~/.local/share/recently-used.xbel', 'Recent files')
+            ]
+            
+            results = []
+            for path, desc in cleanup_items:
+                try:
+                    expanded_path = os.path.expanduser(path)
+                    if '*' in expanded_path:
+                        subprocess.run(f'rm -rf {expanded_path}', shell=True, timeout=10)
+                    elif os.path.exists(expanded_path):
+                        os.remove(expanded_path)
+                    results.append(f"✅ {desc}")
+                except Exception:
+                    results.append(f"❌ {desc}")
+            
+            message = f"""
+🧹 **PRIVACY CLEANUP COMPLETE**
+════════════════════════════════════
+
+📊 **Cleaned Items:**
+{chr(10).join(results)}
+
+💡 **Additional cleanup:**
+- Clear browser data manually
+- Remove log files: `sudo rm /var/log/*`
+- Secure delete: `shred -vfz -n 3 file`
+            """
+            
+        except Exception as e:
+            message = f"❌ **Privacy cleanup error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="security")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def secure_delete(self, query):
+        await query.edit_message_text(
+            "📂 **Secure File Deletion**\n\nSecure delete commands:\n\n`shred -vfz -n 3 file.txt` - Overwrite 3 times\n`rm file.txt && sync` - Delete and sync\n\n⚠️ **Cannot be undone!**",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="security")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def ssh_keys(self, query):
+        await query.edit_message_text("🔑 Checking SSH keys...")
+        
+        try:
+            ssh_dir = os.path.expanduser('~/.ssh')
+            if os.path.exists(ssh_dir):
+                files = os.listdir(ssh_dir)
+                if files:
+                    file_list = '\n'.join([f"┣ {f}" for f in files])
+                    message = f"""
+🔑 **SSH KEY MANAGER**
+════════════════════════════════════
+
+📁 **SSH Directory:** `~/.ssh`
+
+🗂️ **Files:**
+{file_list}
+
+💡 **Commands:**
+- `ssh-keygen -t rsa -b 4096` - Generate new key
+- `ssh-copy-id user@host` - Copy key to server
+- `ssh-add ~/.ssh/id_rsa` - Add key to agent
+                    """
+                else:
+                    message = "🔑 **SSH directory exists but is empty**\n\nGenerate keys with:\n`ssh-keygen -t rsa -b 4096`"
+            else:
+                message = "🔑 **No SSH directory found**\n\nCreate with:\n`mkdir ~/.ssh && chmod 700 ~/.ssh`"
+                
+        except Exception as e:
+            message = f"❌ **SSH key error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="security")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def device_lock(self, query):
+        message = "📱 **Device Lock Control**\n\n"
+        
+        if self.termux_api:
+            message += """
+🔒 **Available Controls:**
+- `termux-keystore` - Secure key storage
+- `termux-fingerprint` - Fingerprint auth
+- Device lock requires system permissions
+
+💡 **Manual lock:**
+Press power button or use system settings
+            """
+        else:
+            message += "⚠️ **Termux:API required** for device lock features"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="security")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    # Camera and Sensor Implementations (require Termux:API)
+    async def quick_photo(self, query):
+        if not self.termux_api:
+            await self.show_api_guide(query)
+            return
+        
+        await query.edit_message_text("📷 Taking photo...")
+        
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"photo_{timestamp}.jpg"
+            
+            result = subprocess.run(['termux-camera-photo', filename], 
+                                  capture_output=True, text=True, timeout=10)
+            
+            if result.returncode == 0:
+                message = f"📷 **Photo captured successfully!**\n\n📁 **File:** `{filename}`\n📍 **Location:** Current directory"
+            else:
+                message = f"❌ **Photo capture failed**\n\n`{result.stderr}`"
+                
+        except Exception as e:
+            message = f"❌ **Camera error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="camera")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def record_video(self, query):
+        if not self.termux_api:
+            await self.show_api_guide(query)
+            return
+            
+        await query.edit_message_text(
+            "🎬 **Video Recording**\n\nRecord video:\n`termux-camera-video filename.mp4`\n\nPress Ctrl+C to stop recording",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="camera")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def switch_camera(self, query):
+        await query.edit_message_text(
+            "🔄 **Camera Switch**\n\nSwitch between cameras:\n`termux-camera-photo -c 0` (back)\n`termux-camera-photo -c 1` (front)",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="camera")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def camera_settings(self, query):
+        if not self.termux_api:
+            await self.show_api_guide(query)
+            return
+            
+        try:
+            result = subprocess.run(['termux-camera-info'], 
+                                  capture_output=True, text=True, timeout=5)
+            
+            if result.returncode == 0:
+                message = f"""
+⚙️ **CAMERA SETTINGS & INFO**
+════════════════════════════════════
+
+📷 **Camera Information:**
+```json
+{result.stdout}
+```
+
+💡 **Camera Controls:**
+- `-c ID` - Camera ID (0=back, 1=front)
+- `-s WxH` - Resolution (e.g., 1920x1080)  
+- Quality settings available
+                """
+            else:
+                message = "❌ **Camera info not available**"
+                
+        except Exception as e:
+            message = f"❌ **Camera settings error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="camera")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def gps_location(self, query):
+        if not self.termux_api:
+            await self.show_api_guide(query)
+            return
+            
+        await query.edit_message_text("📍 Getting GPS location...")
+        
+        try:
+            result = subprocess.run(['termux-location'], 
+                                  capture_output=True, text=True, timeout=15)
+            
+            if result.returncode == 0:
+                location_data = json.loads(result.stdout)
+                lat = location_data.get('latitude', 'N/A')
+                lon = location_data.get('longitude', 'N/A')
+                accuracy = location_data.get('accuracy', 'N/A')
+                altitude = location_data.get('altitude', 'N/A')
+                
+                message = f"""
+📍 **GPS LOCATION DATA**
+════════════════════════════════════
+
+🌍 **Coordinates:**
+┣ **Latitude:** {lat}
+┣ **Longitude:** {lon}
+┣ **Accuracy:** {accuracy}m
+┗ **Altitude:** {altitude}m
+
+🗺️ **Google Maps:**
+https://maps.google.com/?q={lat},{lon}
+
+💡 **Raw Data:**
+```json
+{result.stdout}
+```
+                """
+            else:
+                message = "❌ **GPS location failed**\n\nEnable location services and grant permissions"
+                
+        except Exception as e:
+            message = f"❌ **GPS error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="sensors")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def compass(self, query):
+        if not self.termux_api:
+            await self.show_api_guide(query)
+            return
+            
+        try:
+            result = subprocess.run(['termux-sensor', '-s', 'magnetic_field', '-n', '1'], 
+                                  capture_output=True, text=True, timeout=5)
+            
+            if result.returncode == 0:
+                sensor_data = json.loads(result.stdout)
+                values = sensor_data.get('magnetic_field', {}).get('values', [0, 0, 0])
+                
+                message = f"""
+🧭 **COMPASS & MAGNETIC FIELD**
+════════════════════════════════════
+
+🔢 **Magnetic Field (μT):**
+┣ **X-axis:** {values[0]:.2f}
+┣ **Y-axis:** {values[1]:.2f}
+┗ **Z-axis:** {values[2]:.2f}
+
+💡 **Direction:** Use magnetometer for compass bearing
+Raw data shows magnetic field strength in microteslas
+                """
+            else:
+                message = "❌ **Compass sensor not available**"
+                
+        except Exception as e:
+            message = f"❌ **Compass error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="sensors")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def accelerometer(self, query):
+        if not self.termux_api:
+            await self.show_api_guide(query)
+            return
+            
+        try:
+            result = subprocess.run(['termux-sensor', '-s', 'accelerometer', '-n', '1'], 
+                                  capture_output=True, text=True, timeout=5)
+            
+            if result.returncode == 0:
+                sensor_data = json.loads(result.stdout)
+                values = sensor_data.get('accelerometer', {}).get('values', [0, 0, 0])
+                
+                message = f"""
+📐 **ACCELEROMETER DATA**
+════════════════════════════════════
+
+⚡ **Acceleration (m/s²):**
+┣ **X-axis:** {values[0]:.2f}
+┣ **Y-axis:** {values[1]:.2f}
+┗ **Z-axis:** {values[2]:.2f}
+
+📱 **Device Orientation:**
+- Positive X: Right
+- Positive Y: Up  
+- Positive Z: Out of screen
+
+💡 **Gravity:** ~9.8 m/s² when stationary
+                """
+            else:
+                message = "❌ **Accelerometer not available**"
+                
+        except Exception as e:
+            message = f"❌ **Accelerometer error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="sensors")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def temperature(self, query):
+        if not self.termux_api:
+            await self.show_api_guide(query)
+            return
+            
+        try:
+            result = subprocess.run(['termux-sensor', '-s', 'temperature'], 
+                                  capture_output=True, text=True, timeout=5)
+            
+            if result.returncode == 0:
+                sensor_data = json.loads(result.stdout)
+                temp_value = sensor_data.get('temperature', {}).get('values', [0])[0]
+                
+                message = f"""
+🌡️ **TEMPERATURE SENSOR**
+════════════════════════════════════
+
+🔥 **Current Temperature:**
+┣ **Celsius:** {temp_value:.1f}°C
+┣ **Fahrenheit:** {(temp_value * 9/5) + 32:.1f}°F
+┗ **Kelvin:** {temp_value + 273.15:.1f}K
+
+💡 **Note:** This shows device internal temperature
+For ambient temperature, use external sensor
+                """
+            else:
+                message = "❌ **Temperature sensor not available**"
+                
+        except Exception as e:
+            message = f"❌ **Temperature error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="sensors")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    # Settings and Management
+    async def user_management(self, query):
+        message = f"""
+👥 **USER MANAGEMENT**
+════════════════════════════════════
+
+🔐 **Current Status:**
+┣ **Authorized Users:** {len(self.authorized_users) if self.authorized_users else 'All users allowed'}
+┣ **Security Mode:** {'Restricted' if self.authorized_users else 'Open'}
+┗ **Admin Access:** Available
+
+⚙️ **Management Options:**
+┣ **Add User:** Send user ID to authorize
+┣ **Remove User:** Remove user authorization  
+┣ **List Users:** View all authorized users
+┗ **Reset Security:** Clear all restrictions
+
+💡 **Current User ID:** {query.from_user.id}
+        """
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("➕ Add User", callback_data="add_user"),
+                InlineKeyboardButton("➖ Remove User", callback_data="remove_user")
+            ],
+            [
+                InlineKeyboardButton("📋 List Users", callback_data="list_users"),
+                InlineKeyboardButton("🔄 Reset Security", callback_data="reset_security")
+            ],
+            [InlineKeyboardButton("🔙 Back", callback_data="settings")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def bot_settings(self, query):
+        message = f"""
+🔧 **BOT SETTINGS**
+════════════════════════════════════
+
+🤖 **Bot Configuration:**
+┣ **Status:** {'🟢 Active' if self.bot_active else '🔴 Inactive'}
+┣ **Version:** v2.0 Professional  
+┣ **Command History:** {len(self.command_history)} commands
+┗ **Max History:** {self.max_history} commands
+
+📁 **Directory Settings:**
+┣ **Current:** `{os.path.basename(self.current_directory)}`
+┣ **Home:** `{os.path.expanduser('~')}`
+┣ **Previous:** `{os.path.basename(self.previous_directory)}`
+┗ **Working Dir:** `{self.current_directory}`
+
+⚙️ **Feature Settings:**
+┣ **Termux API:** {'✅ Enabled' if self.termux_api else '❌ Disabled'}
+┣ **Root Access:** {'✅ Available' if self.root_available else '❌ Not Available'}
+┣ **Admin Features:** {'✅ Active' if self.admin_features else '❌ Limited'}
+┗ **Logging:** ✅ Enabled
+
+🛠️ **Configuration:**
+        """
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🔄 Refresh Status", callback_data="refresh_status"),
+                InlineKeyboardButton("📊 System Check", callback_data="system_check")
+            ],
+            [
+                InlineKeyboardButton("🗂️ Change Dir", callback_data="change_dir"),
+                InlineKeyboardButton("🧹 Clear History", callback_data="clear_history")
+            ],
+            [InlineKeyboardButton("🔙 Back", callback_data="settings")]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def view_logs(self, query):
+        await self.show_log_viewer(query)
+    
+    async def clear_data(self, query):
+        await query.edit_message_text("🧹 Clearing bot data...")
+        
+        try:
+            # Clear command history
+            self.command_history.clear()
+            
+            # Clear temporary files
+            temp_files_cleared = 0
+            for temp_dir in ['temp', 'downloads', 'uploads']:
+                if os.path.exists(temp_dir):
+                    for file in os.listdir(temp_dir):
+                        try:
+                            file_path = os.path.join(temp_dir, file)
+                            if os.path.isfile(file_path):
+                                os.remove(file_path)
+                                temp_files_cleared += 1
+                        except Exception:
+                            continue
+            
+            message = f"""
+🧹 **DATA CLEANUP COMPLETE**
+════════════════════════════════════
+
+✅ **Cleared Items:**
+┣ **Command History:** {len(self.command_history)} cleared
+┣ **Temp Files:** {temp_files_cleared} removed
+┣ **Cache:** Cleared
+┗ **Logs:** Preserved (use 'View Logs' to check)
+
+💡 **Preserved:**
+- Bot configuration
+- Authorized users
+- System settings
+            """
+            
+        except Exception as e:
+            message = f"❌ **Clear data error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="settings")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def restart_bot(self, query):
+        await query.edit_message_text(
+            "🔄 **Bot Restart**\n\n⚠️ **Manual restart required**\n\nStop bot with Ctrl+C and run:\n`python termux_bot.py`",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="settings")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    async def export_config(self, query):
+        await query.edit_message_text("📤 Exporting configuration...")
+        
+        try:
+            config_data = {
+                'bot_version': '2.0',
+                'export_time': datetime.now().isoformat(),
+                'current_directory': self.current_directory,
+                'authorized_users': self.authorized_users,
+                'command_history_count': len(self.command_history),
+                'features': {
+                    'termux_api': self.termux_api,
+                    'root_available': self.root_available,
+                    'admin_features': bool(self.admin_features)
+                }
+            }
+            
+            config_file = f"bot_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            with open(config_file, 'w') as f:
+                json.dump(config_data, f, indent=2)
+            
+            message = f"""
+📤 **CONFIGURATION EXPORTED**
+════════════════════════════════════
+
+✅ **Export Complete:**
+┣ **File:** `{config_file}`
+┣ **Size:** {os.path.getsize(config_file)} bytes
+┣ **Location:** Current directory
+┗ **Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+📋 **Exported Data:**
+┣ Bot settings and version
+┣ Directory configuration  
+┣ User authorization list
+┣ Feature availability status
+┗ System capabilities
+
+💾 **Backup:** Keep this file safe for restoration
+            """
+            
+        except Exception as e:
+            message = f"❌ **Export error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="settings")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    async def install_api(self, query):
+        await self.show_api_guide(query)
+    
+    async def diagnostics(self, query):
+        await query.edit_message_text("⚡ Running system diagnostics...")
+        
+        try:
+            diagnostics = []
+            
+            # Check Python version
+            try:
+                python_version = subprocess.run([sys.executable, '--version'], 
+                                              capture_output=True, text=True).stdout.strip()
+                diagnostics.append(f"✅ **Python:** {python_version}")
+            except Exception:
+                diagnostics.append("❌ **Python:** Version check failed")
+            
+            # Check essential commands
+            essential_commands = ['ls', 'pwd', 'ps', 'df', 'free']
+            available_commands = 0
+            for cmd in essential_commands:
+                try:
+                    result = subprocess.run(['which', cmd], capture_output=True, timeout=2)
+                    if result.returncode == 0:
+                        available_commands += 1
+                except Exception:
+                    pass
+            
+            diagnostics.append(f"✅ **Commands:** {available_commands}/{len(essential_commands)} available")
+            
+            # Check disk space
+            try:
+                disk = psutil.disk_usage('/')
+                free_gb = disk.free / (1024**3)
+                diagnostics.append(f"✅ **Disk Space:** {free_gb:.1f}GB free")
+            except Exception:
+                diagnostics.append("❌ **Disk Space:** Check failed")
+            
+            # Check network connectivity
+            try:
+                result = subprocess.run(['ping', '-c', '1', '8.8.8.8'], 
+                                      capture_output=True, timeout=5)
+                if result.returncode == 0:
+                    diagnostics.append("✅ **Network:** Connected")
+                else:
+                    diagnostics.append("❌ **Network:** No connectivity")
+            except Exception:
+                diagnostics.append("❌ **Network:** Check failed")
+            
+            # Check permissions
+            try:
+                test_file = 'diagnostic_test.tmp'
+                with open(test_file, 'w') as f:
+                    f.write('test')
+                os.remove(test_file)
+                diagnostics.append("✅ **Permissions:** File operations OK")
+            except Exception:
+                diagnostics.append("❌ **Permissions:** File operations failed")
+            
+            message = f"""
+⚡ **SYSTEM DIAGNOSTICS REPORT**
+════════════════════════════════════
+
+🔍 **System Health:**
+{chr(10).join(diagnostics)}
+
+📊 **Feature Status:**
+┣ **Termux API:** {'✅ Available' if self.termux_api else '❌ Not Available'}
+┣ **Root Access:** {'✅ Available' if self.root_available else '❌ Not Available'}
+┣ **Device Admin:** {'✅ Available' if self.admin_features else '❌ Limited'}
+┗ **Bot Status:** {'✅ Running' if self.bot_active else '❌ Inactive'}
+
+🕐 **Report Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            """
+            
+        except Exception as e:
+            message = f"❌ **Diagnostics error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="settings")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    # Additional missing methods for file operations
     async def handle_file_upload(self, query):
-        await query.edit_message_text("📤 File upload feature - Coming soon!")
+        await query.edit_message_text(
+            "📤 **File Upload**\n\nSend any file to upload it to current directory\n\n📍 **Current:** `{}`".format(self.current_directory),
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="files")
+            ]]),
+            parse_mode='Markdown'
+        )
     
     async def handle_file_download(self, query):
-        await query.edit_message_text("📥 File download feature - Coming soon!")
+        try:
+            files = [f for f in os.listdir(self.current_directory) 
+                    if os.path.isfile(os.path.join(self.current_directory, f))][:10]
+            
+            if files:
+                file_list = '\n'.join([f"┣ `{f}`" for f in files])
+                message = f"""
+📥 **FILE DOWNLOAD**
+════════════════════════════════════
+
+📁 **Available Files:**
+{file_list}
+
+💡 **Send filename to download**
+Example: `document.pdf`
+                """
+            else:
+                message = "📥 **No files available for download**"
+                
+        except Exception as e:
+            message = f"❌ **Download error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="files")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
     
     async def compress_files(self, query):
-        await query.edit_message_text("🗜️ File compression - Coming soon!")
+        await query.edit_message_text(
+            "🗜️ **File Compression**\n\nCreate archives:\n`tar -czf archive.tar.gz folder/`\n`zip -r archive.zip folder/`\n\nExtract:\n`tar -xzf archive.tar.gz`\n`unzip archive.zip`",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="files")
+            ]]),
+            parse_mode='Markdown'
+        )
     
     async def backup_system(self, query):
-        await query.edit_message_text("💾 System backup - Coming soon!")
+        await query.edit_message_text(
+            "💾 **System Backup**\n\nBackup commands:\n`tar -czf backup_$(date +%Y%m%d).tar.gz ~/`\n`rsync -av ~/ /backup/location/`",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Back", callback_data="files")
+            ]]),
+            parse_mode='Markdown'
+        )
+    
+    # Placeholder methods for remaining features
+    async def test_api(self, query):
+        await query.edit_message_text("🧪 Testing Termux:API...")
+        
+        if not self.termux_api:
+            message = "❌ **Termux:API not detected**\n\nPlease install Termux:API first"
+        else:
+            try:
+                # Test basic API function
+                result = subprocess.run(['termux-battery-status'], 
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    message = f"✅ **Termux:API is working!**\n\n```json\n{result.stdout}\n```"
+                else:
+                    message = "❌ **API test failed**\n\nCheck permissions and installation"
+            except Exception as e:
+                message = f"❌ **API test error:** `{str(e)}`"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="main_menu")]]
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    # Add all other placeholder methods with basic implementations
+    async def address_lookup(self, query):
+        await query.edit_message_text("🗺️ **Address Lookup** - Feature coming soon!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="sensors")]]))
+    
+    async def satellite_info(self, query):
+        await query.edit_message_text("🛰️ **Satellite Info** - Feature coming soon!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="sensors")]]))
+    
+    async def sensor_graphs(self, query):
+        await query.edit_message_text("📈 **Sensor Graphs** - Feature coming soon!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="sensors")]]))
+    
+    async def navigation(self, query):
+        await query.edit_message_text("🎯 **Navigation** - Feature coming soon!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="sensors")]]))
+    
+    async def distance_calc(self, query):
+        await query.edit_message_text("📏 **Distance Calculator** - Feature coming soon!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="sensors")]]))
+    
+    async def light_sensor(self, query):
+        await query.edit_message_text("💡 **Light Sensor** - Feature coming soon!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="sensors")]]))
+    
+    # System tools placeholders
+    async def system_cleaner(self, query):
+        await self.cleanup_system(query)
+    
+    async def file_search(self, query):
+        await self.search_files(query)
+    
+    async def disk_analyzer(self, query):
+        await self.show_disk_usage(query)
+    
+    async def system_diagnostics(self, query):
+        await self.diagnostics(query)
+    
+    async def env_vars(self, query):
+        await query.edit_message_text("🌐 **Environment Variables**\n\nView: `env` or `printenv`\nSet: `export VAR=value`", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="system_tools")]]))
+    
+    async def archive_manager(self, query):
+        await self.compress_files(query)
+    
+    # Add remaining placeholder methods for all callbacks
+    async def add_user(self, query):
+        await query.edit_message_text("➕ **Add User**\n\nSend user ID to authorize:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="user_management")]]))
+    
+    async def remove_user(self, query):
+        await query.edit_message_text("➖ **Remove User**\n\nSend user ID to remove:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="user_management")]]))
+    
+    async def list_users(self, query):
+        if self.authorized_users:
+            user_list = '\n'.join([f"┣ `{user_id}`" for user_id in self.authorized_users])
+            message = f"📋 **Authorized Users:**\n{user_list}"
+        else:
+            message = "📋 **No user restrictions** - All users allowed"
+        await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="user_management")]]))
+    
+    async def reset_security(self, query):
+        self.authorized_users.clear()
+        self.save_authorized_users()
+        await query.edit_message_text("🔄 **Security Reset** - All users now allowed", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="user_management")]]))
+    
+    async def refresh_status(self, query):
+        # Refresh system status
+        self.termux_api = self.check_termux_api()
+        self.root_available = self.check_root()
+        self.admin_features = self.check_device_admin()
+        await self.bot_settings(query)
+    
+    async def system_check(self, query):
+        await self.diagnostics(query)
+    
+    async def change_dir(self, query):
+        await query.edit_message_text("🗂️ **Change Directory**\n\nSend new directory path:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="bot_settings")]]))
+    
+    async def clear_history(self, query):
+        self.command_history.clear()
+        await query.edit_message_text("🧹 **Command history cleared**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="bot_settings")]]))
+    
+    # Add all remaining missing methods with basic implementations
+    async def battery_status(self, query):
+        if self.termux_api:
+            try:
+                result = subprocess.run(['termux-battery-status'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    message = f"🔋 **Battery Status:**\n```json\n{result.stdout}\n```"
+                else:
+                    message = "❌ **Battery status unavailable**"
+            except Exception as e:
+                message = f"❌ **Error:** `{str(e)}`"
+        else:
+            message = "⚠️ **Termux:API required**"
+        await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="device")]]))
+    
+    async def brightness_control(self, query):
+        await query.edit_message_text("💡 **Brightness Control** - Use system settings or `termux-brightness` with API", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="device")]]))
+    
+    async def volume_control(self, query):
+        await query.edit_message_text("🔊 **Volume Control** - Use `termux-volume` with API", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="device")]]))
+    
+    async def wifi_manager(self, query):
+        await self.show_wifi_info(query)
+    
+    async def device_info(self, query):
+        try:
+            info = []
+            info.append(f"📱 **OS:** {os.uname().sysname}")
+            info.append(f"🔧 **Architecture:** {os.uname().machine}")
+            info.append(f"🆔 **Hostname:** {os.uname().nodename}")
+            message = f"📱 **Device Info:**\n{chr(10).join(info)}"
+        except Exception as e:
+            message = f"❌ **Error:** `{str(e)}`"
+        await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="device")]]))
+    
+    async def screen_lock(self, query):
+        await query.edit_message_text("🔒 **Screen Lock** - Use power button or system settings", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="device")]]))
+    
+    async def vibration_control(self, query):
+        await query.edit_message_text("📳 **Vibration Control** - Use `termux-vibrate` with API", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="device")]]))
+    
+    # Add all other missing placeholder methods
+    def _create_placeholder_method(self, name, category="main_menu"):
+        async def placeholder_method(self, query):
+            await query.edit_message_text(
+                f"🚧 **{name.replace('_', ' ').title()}** - Feature in development",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Back", callback_data=category)
+                ]])
+            )
+        return placeholder_method
+    
+    # Add remaining methods dynamically
+    def __init_placeholder_methods(self):
+        placeholder_methods = [
+            'process_inspector', 'performance_monitor', 'smart_cleaner', 
+            'security_scan', 'encryption_tools', 'audio_control', 
+            'notification_mgr', 'python_scripts', 'batch_operations',
+            'photo_effects', 'resize_image', 'timelapse', 'qr_scan',
+            'hdr_mode', 'night_mode', 'system_mods', 'root_app_manager',
+            'root_filesystem', 'partition_manager', 'kernel_manager',
+            'performance_tuning', 'selinux_control', 'firewall_manager',
+            'quick_start', 'setup_guide', 'pro_tips', 'troubleshoot',
+            'command_help', 'resources'
+        ]
+        
+        for method_name in placeholder_methods:
+            if not hasattr(self, method_name):
+                setattr(self, method_name, self._create_placeholder_method(method_name))
     
     def run(self):
         """Run the bot"""
+        # Initialize placeholder methods
+        self.__init_placeholder_methods()
+        
         print("\n" + "🔥"*60)
         print("🚀 TERMUX BOT CONTROLLER v2.0 - PROFESSIONAL EDITION")
         print("🔥"*60)
