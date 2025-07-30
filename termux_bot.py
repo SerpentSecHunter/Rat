@@ -664,8 +664,7 @@ def start_handler(message):
         bot.reply_to(message, "❌ Unauthorized access!")
         return
     
-    help_text = """
-🤖 *TERMUX BOT CONTROLLER v3\\.0 BETA*
+    help_text = """🤖 *TERMUX BOT CONTROLLER v3\\.0 BETA*
 
 *PERINTAH TERSEDIA:*
 
@@ -697,9 +696,9 @@ def start_handler(message):
 
 *CONTOH PENGGUNAAN:*
 • `/termux ls \\-la`
-• `/install requests`
+• `/install requests`  
 • `/lock /sdcard/secret\\.txt mypass123`
 • `/ai Jelaskan tentang Python`
 
 *Developer:* SerpentSecHunter
-*GitHub:* https://github\\.com/SerpentSecHunter
+*GitHub:* https://github\\.com/SerpentSecHunter"""
