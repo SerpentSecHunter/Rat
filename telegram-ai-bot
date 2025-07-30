@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+import platform
+import psutil
+import requests
+import asyncio
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from dotenv import load_dotenv
+import google.generativeai as genai
+from datetime import datetime
+import socket
+
+# Fungsi untuk mengecek dan menginstall library yang diperlukan
+def check_and_install_packages():
+    required_packages = [
+        'python-telegram-bot',
+        'python-dotenv', 
+        'google-generativeai',
+        'psutil',
+        'requests'
+    ]
+    
+    missing_packages = []
+    
+    for package in required_packages:
+        try:
+            if package == 'python-telegram-bot':
+                import telegram
+            elif package == 'python-dotenv':
+                import dotenv
+            elif package == 'google-generativeai':
+                import google.generativeai
+            elif package == 'psutil':
+                import psutil
+            elif package == 'requests':
+                import requests
+        except ImportError:
+            missing_packages.append(package)
+    
+    if missing_packages:
+        print(f"🔄 Menginstall library yang diperlukan: {', '.join(missing_packages)}")
+        for package in missing_packages:
+            try:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+                print(f"✅ {package} berhasil diinstall")
+            except subprocess.CalledProcessError:
+                print(f"❌ Gagal menginstall {package}")
+                sys.exit(1)
+        print("✅ Semua library berhasil diinstall!")
+    else:
+        print("✅ Semua library sudah terinstall!")
+
+# Load environment variables
+load_dotenv()
+
+# Konfigurasi API
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+
+# Inisialisasi Gemini AI
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-pro')
+
+class TelegramAIBot:
+    def __init__(self):
+        self.application = Application.builder().token(BOT_TOKEN).build()
+        self.setup_handlers()
+    
+    def setup_handlers(self):
+        """Setup command dan message handlers"""
+        self.application.add_handler(CommandHandler("start", self.start_command))
+        self.application.add_handler(CommandHandler("info", self.info_command))
+        self.application.add_handler(CommandHandler("help", self.help_command))
+        self.application.add_handler(CallbackQueryHandler(self.button_callback))
+        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+    
+    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler untuk command /start"""
+        user = update.effective_user
+        
+        welcome_message = f"""
+🌟 **SELAMAT DATANG DI AI ASSISTANT BOT** 🌟
+
+Halo {user.first_name}! 👋
+
+Saya adalah **ASISTEN AI CANGGIH** yang siap membantu Anda 24/7! 
+Dengan teknologi **GEMINI AI** terdepan, saya bisa menjawab berbagai pertanyaan Anda dengan cepat dan akurat.
+
+🔥 **KEMAMPUAN SAYA:**
+• Menjawab pertanyaan umum
+• Membantu pemecahan masalah  
+• Memberikan penjelasan teknis
+• Analisis dan diskusi mendalam
+• Dan masih banyak lagi!
+
+💪 **SAYA BERKOMITMEN** untuk memberikan pelayanan terbaik dengan respons yang **TEGAS**, **AKURAT**, dan **BERWIBAWA**!
+
+Ketik pesan apapun untuk memulai percakapan, atau gunakan tombol di bawah ini:
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton("📊 Info Sistem", callback_data='info_sistem')],
+            [InlineKeyboardButton("🤖 Tentang AI", callback_data='tentang_ai')],
+            [InlineKeyboardButton("❓ Bantuan", callback_data='bantuan')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(welcome_message, reply_markup=reply_markup, parse_mode='Markdown')
+    
+    def get_system_info(self, user):
+        """Mengambil informasi sistem pengguna"""
+        try:
+            # Informasi dasar
+            cpu_info = platform.processor() or "Tidak terdeteksi"
+            os_info = platform.system()
+            os_version = platform.version()
+            os_release = platform.release()
+            kernel = platform.release()
+            
+            # Informasi RAM
+            memory = psutil.virtual_memory()
+            ram_total = round(memory.total / (1024**3), 2)
+            ram_used = round(memory.used / (1024**3), 2)
+            ram_available = round(memory.available / (1024**3), 2)
+            
+            # Informasi baterai (jika tersedia)
+            try:
+                battery = psutil.sensors_battery()
+                battery_percent = f"{battery.percent}%" if battery else "Tidak terdeteksi"
+            except:
+                battery_percent = "Tidak terdeteksi"
+            
+            # Informasi jaringan/IP
+            try:
+                response = requests.get('https://httpbin.org/ip', timeout=5)
+                ip_address = response.json().get('origin', 'Tidak terdeteksi')
+            except:
+                ip_address = "Tidak terdeteksi"
+            
+            # Brand OS
+            if os_info.lower() == 'linux':
+                try:
+                    with open('/etc/os-release', 'r') as f:
+                        os_brand = "Linux"
+                        for line in f:
+                            if line.startswith('PRETTY_NAME'):
+                                os_brand = line.split('=')[1].strip().strip('"')
+                                break
+                except:
+                    os_brand = "Linux"
+            else:
+                os_brand = os_info
+            
+            info_text = f"""
+🔍 **INFORMASI SISTEM PENGGUNA** 🔍
+
+👤 **Informasi Pengguna:**
+• Nama: {user.first_name} {user.last_name or ''}
+• Username: @{user.username or 'Tidak ada'}
+• User ID: {user.id}
+
+📱 **Informasi Sistem:**
+• IP Address: `{ip_address}`
+• Baterai: {battery_percent}
+• CPU: {cpu_info}
+• Kernel: {kernel}
+
+💾 **Informasi Memory:**
+• RAM Total: {ram_total} GB
+• RAM Terpakai: {ram_used} GB
+• RAM Tersedia: {ram_available} GB
+
+🖥️ **Informasi OS:**
+• Sistem Operasi: {os_info}
+• Versi OS: {os_version}
+• Release: {os_release}
+• Brand OS: {os_brand}
+
+📊 **Status:** Sistem berjalan normal
+⏰ **Waktu Scan:** {datetime.now().strftime('%H:%M:%S - %d/%m/%Y')}
+"""
+            return info_text
+        except Exception as e:
+            return f"❌ Error mengambil informasi sistem: {str(e)}"
+    
+    async def info_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler untuk command /info"""
+        user = update.effective_user
+        info_text = self.get_system_info(user)
+        await update.message.reply_text(info_text, parse_mode='Markdown')
+    
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler untuk command /help"""
+        help_text = """
+🤖 **PANDUAN PENGGUNAAN BOT AI** 
+
+**PERINTAH UTAMA:**
+• `/start` - Memulai bot dan menampilkan menu utama
+• `/info` - Menampilkan informasi sistem Anda
+• `/help` - Menampilkan panduan ini
+
+**CARA MENGGUNAKAN:**
+1. Ketik pertanyaan apapun dalam bahasa Indonesia atau Inggris
+2. Bot akan memproses dengan AI Gemini dan memberikan jawaban terbaik
+3. Gunakan tombol inline untuk navigasi cepat
+
+**FITUR UNGGULAN:**
+• ⚡ Respons AI super cepat
+• 📊 Analisis sistem real-time  
+• 🌐 Dukungan multi-bahasa
+• 🔒 Keamanan data terjamin
+
+**TIPS:**
+• Ajukan pertanyaan yang spesifik untuk hasil terbaik
+• Bot dapat membantu dalam berbagai topik
+• Gunakan bahasa yang jelas dan mudah dipahami
+
+Ketik pesan untuk memulai percakapan dengan AI! 🚀
+"""
+        await update.message.reply_text(help_text, parse_mode='Markdown')
+    
+    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler untuk inline button callbacks"""
+        query = update.callback_query
+        await query.answer()
+        
+        if query.data == 'info_sistem':
+            user = query.from_user
+            info_text = self.get_system_info(user)
+            await query.edit_message_text(info_text, parse_mode='Markdown')
+        
+        elif query.data == 'tentang_ai':
+            ai_info = """
+🤖 **TENTANG AI ASSISTANT**
+
+Saya adalah **AI Assistant** yang didukung oleh teknologi **Google Gemini AI** terdepan!
+
+🧠 **KEMAMPUAN AI:**
+• Natural Language Processing (NLP)
+• Machine Learning terkini
+• Analisis konteks mendalam
+• Pemahaman multi-bahasa
+• Reasoning dan logical thinking
+
+⚡ **KEUNGGULAN:**
+• Respons dalam hitungan detik
+• Akurasi tinggi dalam menjawab
+• Pemahaman konteks yang baik
+• Pembelajaran berkelanjutan
+
+🎯 **SPESIALISASI:**
+• Pertanyaan umum dan teknis
+• Pemecahan masalah
+• Analisis dan penelitian
+• Edukasi dan pembelajaran
+• Konsultasi berbagai topik
+
+Saya siap membantu Anda 24/7! 💪
+"""
+            await query.edit_message_text(ai_info, parse_mode='Markdown')
+        
+        elif query.data == 'bantuan':
+            await self.help_command(update, context)
+    
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler untuk pesan teks dari user"""
+        user_message = update.message.text
+        user = update.effective_user
+        
+        # Kirim typing indicator
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action='typing')
+        
+        try:
+            # Generate response menggunakan Gemini AI
+            response = model.generate_content(user_message)
+            ai_response = response.text
+            
+            # Format response
+            formatted_response = f"""
+🤖 **AI ASSISTANT RESPONSE:**
+
+{ai_response}
+
+---
+⚡ *Powered by Gemini AI* • 🕐 {datetime.now().strftime('%H:%M')}
+"""
+            
+            await update.message.reply_text(formatted_response, parse_mode='Markdown')
+            
+        except Exception as e:
+            error_message = f"""
+❌ **TERJADI KESALAHAN**
+
+Maaf, terjadi error saat memproses pesan Anda:
+`{str(e)}`
+
+Silakan coba lagi atau hubungi administrator.
+"""
+            await update.message.reply_text(error_message, parse_mode='Markdown')
+
+    def run(self):
+        """Menjalankan bot"""
+        print("🚀 Bot Telegram AI berhasil dijalankan!")
+        print("📡 Bot sedang online dan siap menerima pesan...")
+        print(f"⏰ Waktu start: {datetime.now().strftime('%H:%M:%S - %d/%m/%Y')}")
+        print("🔄 Tekan Ctrl+C untuk menghentikan bot")
+        
+        self.application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+def main():
+    """Fungsi utama"""
+    print("🔍 Mengecek library yang diperlukan...")
+    check_and_install_packages()
+    
+    # Cek environment variables
+    if not BOT_TOKEN or not GEMINI_API_KEY:
+        print("❌ Error: BOT_TOKEN atau GEMINI_API_KEY tidak ditemukan!")
+        print("💡 Pastikan file .env sudah dibuat dengan benar.")
+        sys.exit(1)
+    
+    print("✅ Konfigurasi berhasil dimuat!")
+    
+    # Inisialisasi dan jalankan bot
+    bot = TelegramAIBot()
+    bot.run()
+
+if __name__ == '__main__':
+    main()
