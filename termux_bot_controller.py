@@ -4,7 +4,7 @@
 Bot Telegram Termux Controller - Enhanced Version
 Developed for Termux Android Environment
 Author: Enhanced Assistant
-Version: 2.0 - Full Featured
+Version: 2.1 - Full Featured
 """
 
 import os
@@ -300,7 +300,7 @@ class TermuxBotController:
         self.log_action("BOT_START", f"User: {user.first_name} ({user.id})")
         
         welcome_message = f"""
-🤖 **TERMUX BOT CONTROLLER v2.0** 🤖
+🤖 **TERMUX BOT CONTROLLER v2.1** 🤖
 ═══════════════════════════════════
 
 👋 Selamat datang, **{user.first_name}**!
@@ -393,7 +393,7 @@ class TermuxBotController:
         uptime_str = str(timedelta(seconds=int(uptime)))
         
         message = f"""
-🤖 **TERMUX BOT CONTROLLER v2.0**
+🤖 **TERMUX BOT CONTROLLER v2.1**
 ═══════════════════════════════════
 
 🕐 **Time:** {current_time}
@@ -484,6 +484,281 @@ class TermuxBotController:
                 self.log_action("PHOTO_TAKEN", f"Camera: {camera_name}, Path: {photo_path}")
                 
                 await query.edit_message_text(
+                    f"✅ Foto {camera_name.lower()} berhasil diambil!\n📁 Tersimpan di: `{photo_path}`",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📷 Foto Lagi", callback_data="take_photo")],
+                        [InlineKeyboardButton("🔙 Menu Utama", callback_data="main_menu")]
+                    ]),
+                    parse_mode='Markdown'
+                )
+            else:
+                raise Exception(f"Camera error: {result.stderr}")
+                
+        except Exception as e:
+            await query.edit_message_text(
+                f"❌ Gagal mengambil foto: {str(e)}\n\n💡 Tips:\n• Pastikan Termux:API terinstall\n• Berikan izin kamera ke Termux\n• Coba restart aplikasi",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Coba Lagi", callback_data="take_photo")],
+                    [InlineKeyboardButton("🔙 Menu Utama", callback_data="main_menu")]
+                ])
+            )
+
+    async def record_video(self, query):
+        """Record video from camera"""
+        await query.edit_message_text("🎥 Recording video selama 10 detik...")
+        
+        try:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            video_path = f"/tmp/video_{timestamp}.mp4"
+            
+            result = subprocess.run([
+                'termux-tts-speak', 'Recording started'
+            ], capture_output=True)
+            
+            result = subprocess.run([
+                'termux-camera-video', 
+                '-c', '1',
+                '-s', '1280x720',
+                '-l', '10',  # 10 seconds
+                video_path
+            ], capture_output=True, text=True, timeout=15)
+            
+            if result.returncode == 0 and os.path.exists(video_path):
+                file_size = os.path.getsize(video_path)
+                if file_size < 50 * 1024 * 1024:  # 50MB limit
+                    with open(video_path, 'rb') as video:
+                        await query.message.reply_video(
+                            video=video,
+                            caption=f"🎥 Video recorded\n🕐 {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+                        )
+                    os.remove(video_path)
+                    
+                    await query.edit_message_text(
+                        "✅ Video berhasil direkam dan dikirim!",
+                        reply_markup=InlineKeyboardMarkup([[
+                            InlineKeyboardButton("🔙 Kembali", callback_data="take_photo")
+                        ]])
+                    )
+                else:
+                    await query.edit_message_text("❌ Video terlalu besar (>50MB)")
+            else:
+                raise Exception("Failed to record video")
+                
+        except Exception as e:
+            await query.edit_message_text(
+                f"❌ Gagal merekam video: {str(e)}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Kembali", callback_data="take_photo")
+                ]])
+            )
+
+    async def get_camera_info(self, query):
+        """Get camera information"""
+        try:
+            result = subprocess.run(['termux-camera-info'], 
+                                  capture_output=True, text=True, timeout=5)
+            
+            if result.returncode == 0:
+                camera_info = json.loads(result.stdout)
+                
+                info_text = "📊 **CAMERA INFO**\n═══════════════════\n\n"
+                
+                for i, camera in enumerate(camera_info):
+                    facing = "📷 Front" if camera.get('facing') == 'front' else "📸 Back"
+                    info_text += f"**Camera {i}:** {facing}\n"
+                    info_text += f"• **ID:** {camera.get('id', 'Unknown')}\n"
+                    if 'sizes' in camera:
+                        sizes = camera['sizes'][:3]  # Show first 3 sizes
+                        info_text += f"• **Sizes:** {', '.join(sizes)}\n"
+                    info_text += "\n"
+                
+                await query.edit_message_text(
+                    info_text,
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔙 Kembali", callback_data="take_photo")
+                    ]]),
+                    parse_mode='Markdown'
+                )
+            else:
+                raise Exception("Cannot get camera info")
+                
+        except Exception as e:
+            await query.edit_message_text(
+                f"❌ Error: {str(e)}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Kembali", callback_data="take_photo")
+                ]])
+            )
+
+    async def check_battery(self, query):
+        """Enhanced battery status"""
+        await query.edit_message_text("🔋 Menganalisis status baterai...")
+        
+        try:
+            result = subprocess.run(['termux-battery-status'], 
+                                  capture_output=True, text=True, timeout=5)
+            
+            if result.returncode == 0:
+                battery_info = json.loads(result.stdout)
+                
+                percentage = battery_info.get('percentage', 0)
+                status = battery_info.get('status', 'UNKNOWN')
+                health = battery_info.get('health', 'UNKNOWN')
+                temperature = battery_info.get('temperature', 0)
+                voltage = battery_info.get('voltage', 0)
+                current = battery_info.get('current', 0)
+                
+                # Enhanced status icons
+                status_icons = {
+                    'CHARGING': '🔌',
+                    'DISCHARGING': '🔋',
+                    'NOT_CHARGING': '🔌',
+                    'FULL': '🔋',
+                    'UNKNOWN': '❓'
+                }
+                
+                health_icons = {
+                    'GOOD': '✅',
+                    'OVERHEAT': '🔥',
+                    'DEAD': '💀',
+                    'COLD': '🧊',
+                    'UNKNOWN': '❓'
+                }
+                
+                # Battery level emoji
+                if percentage >= 90:
+                    battery_emoji = "🔋"
+                elif percentage >= 70:
+                    battery_emoji = "🔋"
+                elif percentage >= 50:
+                    battery_emoji = "🔋"
+                elif percentage >= 30:
+                    battery_emoji = "🪫"
+                else:
+                    battery_emoji = "🪫"
+                
+                # Create battery bar
+                bar_length = 20
+                filled = int((percentage / 100) * bar_length)
+                battery_bar = '█' * filled + '░' * (bar_length - filled)
+                
+                # Temperature warning
+                temp_warning = ""
+                if temperature > 40:
+                    temp_warning = "\n⚠️ **Temperature tinggi!**"
+                elif temperature < 0:
+                    temp_warning = "\n❄️ **Temperature rendah!**"
+                
+                battery_message = f"""
+🔋 **BATTERY STATUS** {battery_emoji}
+═══════════════════════════════
+
+📊 **Level:** {percentage}%
+{battery_bar}
+
+{status_icons.get(status, '❓')} **Status:** {status}
+{health_icons.get(health, '❓')} **Health:** {health}
+🌡️ **Temperature:** {temperature}°C{temp_warning}
+⚡ **Voltage:** {voltage/1000:.2f}V
+🔌 **Current:** {current}mA
+
+⏰ **Updated:** {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+                """
+                
+                keyboard = [
+                    [InlineKeyboardButton("🔄 Refresh", callback_data="check_battery")],
+                    [InlineKeyboardButton("📊 Battery History", callback_data="battery_history")],
+                    [InlineKeyboardButton("🔙 Menu Utama", callback_data="main_menu")]
+                ]
+                
+                await query.edit_message_text(
+                    battery_message,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+                
+                self.log_action("BATTERY_CHECK", f"Level: {percentage}%, Status: {status}")
+                
+            else:
+                raise Exception("Cannot access battery information")
+                
+        except Exception as e:
+            await query.edit_message_text(
+                f"❌ Gagal mengecek baterai: {str(e)}\n\n💡 Pastikan Termux:API terinstall",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Menu Utama", callback_data="main_menu")
+                ]])
+            )
+
+    async def track_location(self, query):
+        """Enhanced GPS location tracking"""
+        await query.edit_message_text("📍 Mendapatkan lokasi GPS...")
+        
+        try:
+            # Get location with high accuracy
+            result = subprocess.run([
+                'termux-location', 
+                '-p', 'gps',
+                '-r', 'once'
+            ], capture_output=True, text=True, timeout=30)
+            
+            if result.returncode == 0:
+                location_data = json.loads(result.stdout)
+                
+                latitude = location_data.get('latitude', 0)
+                longitude = location_data.get('longitude', 0)
+                accuracy = location_data.get('accuracy', 0)
+                altitude = location_data.get('altitude', 0)
+                speed = location_data.get('speed', 0)
+                bearing = location_data.get('bearing', 0)
+                
+                # Create Google Maps link
+                maps_link = f"https://www.google.com/maps?q={latitude},{longitude}"
+                
+                # Get address using reverse geocoding
+                try:
+                    geocode_url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={latitude}&longitude={longitude}&localityLanguage=id"
+                    response = requests.get(geocode_url, timeout=10)
+                    address_data = response.json()
+                    address = address_data.get('locality', 'Unknown location')
+                except Exception as e:
+                    address = f"Address lookup failed: {str(e)}"
+                
+                location_message = f"""
+📍 **GPS LOCATION FOUND**
+═══════════════════════════════
+
+🌍 **Coordinates:**
+• **Latitude:** {latitude:.6f}
+• **Longitude:** {longitude:.6f}
+
+📐 **Details:**
+• **Accuracy:** ±{accuracy:.1f}m
+• **Altitude:** {altitude:.1f}m
+• **Speed:** {speed:.1f} m/s
+• **Bearing:** {bearing:.1f}°
+
+📍 **Address:**
+{address}
+
+🗺️ **Maps:** [Open in Google Maps]({maps_link})
+
+⏰ **Time:** {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+                """
+                
+                # Send location
+                await query.message.reply_location(
+                    latitude=latitude,
+                    longitude=longitude
+                )
+                
+                keyboard = [
+                    [InlineKeyboardButton("🔄 Update Location", callback_data="track_location")],
+                    [InlineKeyboardButton("🗺️ Open Maps", url=maps_link)],
+                    [InlineKeyboardButton("🔙 Menu Utama", callback_data="main_menu")]
+                ]
+                
+                await query.edit_message_text(
                     location_message,
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode='Markdown'
@@ -497,10 +772,10 @@ class TermuxBotController:
         except Exception as e:
             await query.edit_message_text(
                 f"❌ Gagal mendapatkan lokasi: {str(e)}\n\n💡 Tips:\n• Aktifkan GPS di pengaturan\n• Berikan izin lokasi ke Termux\n• Pastikan berada di area terbuka",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔄 Coba Lagi", callback_data="track_location"),
-                    InlineKeyboardButton("🔙 Menu Utama", callback_data="main_menu")
-                ]])
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Coba Lagi", callback_data="track_location")],
+                    [InlineKeyboardButton("🔙 Menu Utama", callback_data="main_menu")]
+                ])
             )
 
     async def vibrate_device(self, query):
@@ -865,6 +1140,14 @@ class TermuxBotController:
             await self.volume_control(query)
         elif query.data == "device_brightness":
             await self.brightness_control(query)
+        elif query.data == "device_silent":
+            await self.toggle_silent_mode(query)
+        elif query.data == "device_torch":
+            await self.toggle_torch(query)
+        elif query.data == "device_media":
+            await self.media_control(query)
+        elif query.data == "device_display":
+            await self.display_control(query)
 
     async def volume_control(self, query):
         """Volume control"""
@@ -873,26 +1156,81 @@ class TermuxBotController:
             result = subprocess.run(['termux-volume'], 
                                   capture_output=True, text=True, timeout=5)
             
-            volume_message = """
+            if result.returncode == 0:
+                volume_data = json.loads(result.stdout)
+                
+                volume_message = """
 🔊 **VOLUME CONTROL**
 ═══════════════════════════════
 
-🎵 **Current Volume Levels:**
-• Music: Getting info...
-• Ring: Getting info...
-• System: Getting info...
+🎵 **Current Volume Levels:"""
+                
+                for stream, info in volume_data.items():
+                    volume_message += f"\n• **{stream.capitalize()}:** {info['volume']}%"
+                
+                volume_message += """
 
 📱 **Quick Actions:**
-            """
+                """
+                
+                keyboard = [
+                    [
+                        InlineKeyboardButton("🔇 Mute", callback_data="volume_mute"),
+                        InlineKeyboardButton("🔊 Max", callback_data="volume_max")
+                    ],
+                    [
+                        InlineKeyboardButton("➖ Down", callback_data="volume_down"),
+                        InlineKeyboardButton("➕ Up", callback_data="volume_up")
+                    ],
+                    [
+                        InlineKeyboardButton("🔙 Device Control", callback_data="device_control")
+                    ]
+                ]
+                
+                await query.edit_message_text(
+                    volume_message,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+                
+            else:
+                raise Exception("Cannot get volume info")
+                
+        except Exception as e:
+            await query.edit_message_text(
+                f"❌ Volume control error: {str(e)}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Kembali", callback_data="device_control")
+                ]])
+            )
+
+    async def brightness_control(self, query):
+        """Brightness control"""
+        try:
+            # Get current brightness
+            result = subprocess.run(['termux-brightness'], 
+                                  capture_output=True, text=True, timeout=5)
+            
+            brightness = 50  # Default if cannot get
+            if result.returncode == 0:
+                brightness = int(float(result.stdout.strip()))
+            
+            brightness_message = f"""
+🔆 **BRIGHTNESS CONTROL**
+═══════════════════════════════
+
+💡 **Current Brightness:** {brightness}%
+
+📱 **Quick Actions:"""
             
             keyboard = [
                 [
-                    InlineKeyboardButton("🔇 Mute", callback_data="volume_mute"),
-                    InlineKeyboardButton("🔊 Max", callback_data="volume_max")
+                    InlineKeyboardButton("🔅 Min", callback_data="brightness_min"),
+                    InlineKeyboardButton("🔆 Max", callback_data="brightness_max")
                 ],
                 [
-                    InlineKeyboardButton("➖ Down", callback_data="volume_down"),
-                    InlineKeyboardButton("➕ Up", callback_data="volume_up")
+                    InlineKeyboardButton("➖ Down", callback_data="brightness_down"),
+                    InlineKeyboardButton("➕ Up", callback_data="brightness_up")
                 ],
                 [
                     InlineKeyboardButton("🔙 Device Control", callback_data="device_control")
@@ -900,12 +1238,150 @@ class TermuxBotController:
             ]
             
             await query.edit_message_text(
-                volume_message,
-                reply_markup=InlineKeyboardMarkup(keyboard)
+                brightness_message,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
             )
             
         except Exception as e:
-            await query.edit_message_text(f"❌ Volume control error: {str(e)}")
+            await query.edit_message_text(
+                f"❌ Brightness control error: {str(e)}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Kembali", callback_data="device_control")
+                ]])
+            )
+
+    async def toggle_silent_mode(self, query):
+        """Toggle silent mode"""
+        try:
+            result = subprocess.run(['termux-volume', 'ringer', '0'], 
+                                  capture_output=True, text=True, timeout=5)
+            
+            if result.returncode == 0:
+                await query.edit_message_text(
+                    "🔕 **Silent mode activated**\n\nAll sounds muted",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔔 Unmute", callback_data="device_unmute"),
+                        InlineKeyboardButton("🔙 Kembali", callback_data="device_control")
+                    ]])
+                )
+            else:
+                raise Exception("Cannot set silent mode")
+                
+        except Exception as e:
+            await query.edit_message_text(
+                f"❌ Failed to toggle silent mode: {str(e)}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Kembali", callback_data="device_control")
+                ]])
+            )
+
+    async def toggle_torch(self, query):
+        """Toggle torch/flashlight"""
+        try:
+            # Check current state
+            result = subprocess.run(['termux-torch', 'status'], 
+                                  capture_output=True, text=True, timeout=5)
+            
+            if result.returncode == 0:
+                current_state = result.stdout.strip().lower()
+                new_state = 'off' if current_state == 'on' else 'on'
+                
+                subprocess.run(['termux-torch', new_state], 
+                              capture_output=True, text=True, timeout=5)
+                
+                status = "🔦 ON" if new_state == 'on' else "💡 OFF"
+                await query.edit_message_text(
+                    f"⚡ **TORCH STATUS:** {status}",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔄 Toggle", callback_data="device_torch"),
+                        InlineKeyboardButton("🔙 Kembali", callback_data="device_control")
+                    ]])
+                )
+            else:
+                raise Exception("Cannot access torch")
+                
+        except Exception as e:
+            await query.edit_message_text(
+                f"❌ Failed to toggle torch: {str(e)}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Kembali", callback_data="device_control")
+                ]])
+            )
+
+    async def media_control(self, query):
+        """Media control menu"""
+        media_message = """
+🎵 **MEDIA CONTROL**
+═══════════════════════════════
+
+🎛️ **Control media playback:**
+
+• ⏯️ Play/Pause
+• ⏭️ Next Track
+• ⏮️ Previous Track
+• 🔈 Volume Down
+• 🔊 Volume Up
+• 🔇 Mute
+        """
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("⏯️ Play/Pause", callback_data="media_playpause"),
+                InlineKeyboardButton("⏭️ Next", callback_data="media_next")
+            ],
+            [
+                InlineKeyboardButton("⏮️ Previous", callback_data="media_prev"),
+                InlineKeyboardButton("🔈 Vol Down", callback_data="media_voldown")
+            ],
+            [
+                InlineKeyboardButton("🔊 Vol Up", callback_data="media_volup"),
+                InlineKeyboardButton("🔇 Mute", callback_data="media_mute")
+            ],
+            [
+                InlineKeyboardButton("🔙 Device Control", callback_data="device_control")
+            ]
+        ]
+        
+        await query.edit_message_text(
+            media_message,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    async def display_control(self, query):
+        """Display control menu"""
+        display_message = """
+📺 **DISPLAY CONTROL**
+═══════════════════════════════
+
+🖥️ **Control device display:**
+
+• 🔆 Brightness
+• 🔄 Auto-rotate
+• 💤 Screen timeout
+• 🌙 Night mode
+• 🖌️ Color calibration
+        """
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🔆 Brightness", callback_data="device_brightness"),
+                InlineKeyboardButton("🔄 Auto-rotate", callback_data="display_autorotate")
+            ],
+            [
+                InlineKeyboardButton("💤 Timeout", callback_data="display_timeout"),
+                InlineKeyboardButton("🌙 Night mode", callback_data="display_nightmode")
+            ],
+            [
+                InlineKeyboardButton("🖌️ Colors", callback_data="display_colors"),
+                InlineKeyboardButton("🔙 Device Control", callback_data="device_control")
+            ]
+        ]
+        
+        await query.edit_message_text(
+            display_message,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     async def get_system_info(self, query):
         """Enhanced system information"""
@@ -1397,7 +1873,7 @@ class TermuxBotController:
 
 📱 **Current Status:** Getting info...
 
-🚀 **Choose wallpaper source:**
+🚀 **Choose wallpaper source:"
         """
         
         keyboard = [
@@ -1533,7 +2009,7 @@ class TermuxBotController:
 🌱 **Auto Start:** {'🟢 Enabled' if self.config.auto_start else '🔴 Disabled'}
 
 📊 **Statistics:**
-• **Uptime:** {str(timedelta(seconds=int(time.time() - os.path.getctime(__file__))))}
+• **Uptime:** {str(timedelta(seconds=int(time.time() - os.path.getctime(__file__)))}
 • **Commands Used:** Loading...
 • **Last Activity:** {datetime.now().strftime('%H:%M:%S')}
 
@@ -1770,7 +2246,7 @@ Auto start has been {status}
     def run(self):
         """Enhanced bot runner"""
         print("\n" + "="*60)
-        print("🤖 TERMUX BOT CONTROLLER v2.0 - ENHANCED")
+        print("🤖 TERMUX BOT CONTROLLER v2.1 - ENHANCED")
         print("="*60)
         print("🚀 Initializing enhanced bot...")
         print(f"📁 Working directory: {os.getcwd()}")
@@ -1794,7 +2270,7 @@ Auto start has been {status}
             print("="*60)
             
             # Log bot start
-            self.log_action("BOT_STARTED", f"Version 2.0 - {datetime.now().isoformat()}")
+            self.log_action("BOT_STARTED", f"Version 2.1 - {datetime.now().isoformat()}")
             
             # Run the bot
             self.app.run_polling(allowed_updates=Update.ALL_TYPES)
@@ -1825,279 +2301,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    main().text(
-                    f"✅ Foto {camera_name.lower()} berhasil diambil!\n📁 Tersimpan di: `{photo_path}`",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📷 Foto Lagi", callback_data="take_photo")],
-                        [InlineKeyboardButton("🔙 Menu Utama", callback_data="main_menu")]
-                    ]),
-                    parse_mode='Markdown'
-                )
-            else:
-                raise Exception(f"Camera error: {result.stderr}")
-                
-        except Exception as e:
-            await query.edit_message_text(
-                f"❌ Gagal mengambil foto: {str(e)}\n\n💡 Tips:\n• Pastikan Termux:API terinstall\n• Berikan izin kamera ke Termux\n• Coba restart aplikasi",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔄 Coba Lagi", callback_data="take_photo")],
-                    [InlineKeyboardButton("🔙 Menu Utama", callback_data="main_menu")]
-                ])
-            )
-
-    async def record_video(self, query):
-        """Record video from camera"""
-        await query.edit_message_text("🎥 Recording video selama 10 detik...")
-        
-        try:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            video_path = f"/tmp/video_{timestamp}.mp4"
-            
-            result = subprocess.run([
-                'termux-tts-speak', 'Recording started'
-            ], capture_output=True)
-            
-            result = subprocess.run([
-                'termux-camera-video', 
-                '-c', '1',
-                '-s', '1280x720',
-                '-l', '10',  # 10 seconds
-                video_path
-            ], capture_output=True, text=True, timeout=15)
-            
-            if result.returncode == 0 and os.path.exists(video_path):
-                file_size = os.path.getsize(video_path)
-                if file_size < 50 * 1024 * 1024:  # 50MB limit
-                    with open(video_path, 'rb') as video:
-                        await query.message.reply_video(
-                            video=video,
-                            caption=f"🎥 Video recorded\n🕐 {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
-                        )
-                    os.remove(video_path)
-                    
-                    await query.edit_message_text(
-                        "✅ Video berhasil direkam dan dikirim!",
-                        reply_markup=InlineKeyboardMarkup([[
-                            InlineKeyboardButton("🔙 Kembali", callback_data="take_photo")
-                        ]])
-                    )
-                else:
-                    await query.edit_message_text("❌ Video terlalu besar (>50MB)")
-            else:
-                raise Exception("Failed to record video")
-                
-        except Exception as e:
-            await query.edit_message_text(
-                f"❌ Gagal merekam video: {str(e)}",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Kembali", callback_data="take_photo")
-                ]])
-            )
-
-    async def get_camera_info(self, query):
-        """Get camera information"""
-        try:
-            result = subprocess.run(['termux-camera-info'], 
-                                  capture_output=True, text=True, timeout=5)
-            
-            if result.returncode == 0:
-                camera_info = json.loads(result.stdout)
-                
-                info_text = "📊 **CAMERA INFO**\n═══════════════════\n\n"
-                
-                for i, camera in enumerate(camera_info):
-                    facing = "📷 Front" if camera.get('facing') == 'front' else "📸 Back"
-                    info_text += f"**Camera {i}:** {facing}\n"
-                    info_text += f"• **ID:** {camera.get('id', 'Unknown')}\n"
-                    if 'sizes' in camera:
-                        sizes = camera['sizes'][:3]  # Show first 3 sizes
-                        info_text += f"• **Sizes:** {', '.join(sizes)}\n"
-                    info_text += "\n"
-                
-                await query.edit_message_text(
-                    info_text,
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔙 Kembali", callback_data="take_photo")
-                    ]]),
-                    parse_mode='Markdown'
-                )
-            else:
-                raise Exception("Cannot get camera info")
-                
-        except Exception as e:
-            await query.edit_message_text(
-                f"❌ Error: {str(e)}",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Kembali", callback_data="take_photo")
-                ]])
-            )
-
-    async def check_battery(self, query):
-        """Enhanced battery status"""
-        await query.edit_message_text("🔋 Menganalisis status baterai...")
-        
-        try:
-            result = subprocess.run(['termux-battery-status'], 
-                                  capture_output=True, text=True, timeout=5)
-            
-            if result.returncode == 0:
-                battery_info = json.loads(result.stdout)
-                
-                percentage = battery_info.get('percentage', 0)
-                status = battery_info.get('status', 'UNKNOWN')
-                health = battery_info.get('health', 'UNKNOWN')
-                temperature = battery_info.get('temperature', 0)
-                voltage = battery_info.get('voltage', 0)
-                current = battery_info.get('current', 0)
-                
-                # Enhanced status icons
-                status_icons = {
-                    'CHARGING': '🔌',
-                    'DISCHARGING': '🔋',
-                    'NOT_CHARGING': '🔌',
-                    'FULL': '🔋',
-                    'UNKNOWN': '❓'
-                }
-                
-                health_icons = {
-                    'GOOD': '✅',
-                    'OVERHEAT': '🔥',
-                    'DEAD': '💀',
-                    'COLD': '🧊',
-                    'UNKNOWN': '❓'
-                }
-                
-                # Battery level emoji
-                if percentage >= 90:
-                    battery_emoji = "🔋"
-                elif percentage >= 70:
-                    battery_emoji = "🔋"
-                elif percentage >= 50:
-                    battery_emoji = "🔋"
-                elif percentage >= 30:
-                    battery_emoji = "🪫"
-                else:
-                    battery_emoji = "🪫"
-                
-                # Create battery bar
-                bar_length = 20
-                filled = int((percentage / 100) * bar_length)
-                battery_bar = '█' * filled + '░' * (bar_length - filled)
-                
-                # Temperature warning
-                temp_warning = ""
-                if temperature > 40:
-                    temp_warning = "\n⚠️ **Temperature tinggi!**"
-                elif temperature < 0:
-                    temp_warning = "\n❄️ **Temperature rendah!**"
-                
-                battery_message = f"""
-🔋 **BATTERY STATUS** {battery_emoji}
-═══════════════════════════════
-
-📊 **Level:** {percentage}%
-{battery_bar}
-
-{status_icons.get(status, '❓')} **Status:** {status}
-{health_icons.get(health, '❓')} **Health:** {health}
-🌡️ **Temperature:** {temperature}°C{temp_warning}
-⚡ **Voltage:** {voltage/1000:.2f}V
-🔌 **Current:** {current}mA
-
-⏰ **Updated:** {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
-                """
-                
-                keyboard = [
-                    [InlineKeyboardButton("🔄 Refresh", callback_data="check_battery")],
-                    [InlineKeyboardButton("📊 Battery History", callback_data="battery_history")],
-                    [InlineKeyboardButton("🔙 Menu Utama", callback_data="main_menu")]
-                ]
-                
-                await query.edit_message_text(
-                    battery_message,
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
-                )
-                
-                self.log_action("BATTERY_CHECK", f"Level: {percentage}%, Status: {status}")
-                
-            else:
-                raise Exception("Cannot access battery information")
-                
-        except Exception as e:
-            await query.edit_message_text(
-                f"❌ Gagal mengecek baterai: {str(e)}\n\n💡 Pastikan Termux:API terinstall",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 Menu Utama", callback_data="main_menu")
-                ]])
-            )
-
-    async def track_location(self, query):
-        """Enhanced GPS location tracking"""
-        await query.edit_message_text("📍 Mendapatkan lokasi GPS...")
-        
-        try:
-            # Get location with high accuracy
-            result = subprocess.run([
-                'termux-location', 
-                '-p', 'gps',
-                '-r', 'once'
-            ], capture_output=True, text=True, timeout=30)
-            
-            if result.returncode == 0:
-                location_data = json.loads(result.stdout)
-                
-                latitude = location_data.get('latitude', 0)
-                longitude = location_data.get('longitude', 0)
-                accuracy = location_data.get('accuracy', 0)
-                altitude = location_data.get('altitude', 0)
-                speed = location_data.get('speed', 0)
-                bearing = location_data.get('bearing', 0)
-                
-                # Create Google Maps link
-                maps_link = f"https://www.google.com/maps?q={latitude},{longitude}"
-                
-                # Get address using reverse geocoding
-                try:
-                    geocode_url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={latitude}&longitude={longitude}&localityLanguage=id"
-                    response = requests.get(geocode_url, timeout=10)
-                    address_data = response.json()
-                    address = address_data.get('display_name', 'Unknown location')
-                except:
-                    address = "Address lookup failed"
-                
-                location_message = f"""
-📍 **GPS LOCATION FOUND**
-═══════════════════════════════
-
-🌍 **Coordinates:**
-• **Latitude:** {latitude:.6f}
-• **Longitude:** {longitude:.6f}
-
-📐 **Details:**
-• **Accuracy:** ±{accuracy:.1f}m
-• **Altitude:** {altitude:.1f}m
-• **Speed:** {speed:.1f} m/s
-• **Bearing:** {bearing:.1f}°
-
-📍 **Address:**
-{address}
-
-🗺️ **Maps:** [Open in Google Maps]({maps_link})
-
-⏰ **Time:** {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
-                """
-                
-                # Send location
-                await query.message.reply_location(
-                    latitude=latitude,
-                    longitude=longitude
-                )
-                
-                keyboard = [
-                    [InlineKeyboardButton("🔄 Update Location", callback_data="track_location")],
-                    [InlineKeyboardButton("🗺️ Open Maps", url=maps_link)],
-                    [InlineKeyboardButton("🔙 Menu Utama", callback_data="main_menu")]
-                ]
-                
-                await query.edit_message
+    main()
