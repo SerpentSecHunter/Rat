@@ -134,44 +134,86 @@ class AdvancedTermuxBot:
             json.dump(self.authorized_users, f, indent=2)
     
     def check_termux_api(self):
+        """Check Termux API availability with better error handling"""
         try:
-            result = subprocess.run(['which', 'termux-battery-status'], 
-                                  capture_output=True, timeout=5)
-            return result.returncode == 0
-        except:
+            # Check if termux-api commands exist
+            commands_to_check = ['termux-battery-status', 'termux-camera-info', 'termux-sensor']
+            available_commands = 0
+            
+            for cmd in commands_to_check:
+                try:
+                    result = subprocess.run(['which', cmd], capture_output=True, timeout=3)
+                    if result.returncode == 0:
+                        available_commands += 1
+                except:
+                    continue
+            
+            # Consider API available if at least 2 commands are found
+            return available_commands >= 2
+        except Exception as e:
+            logger.error(f"Error checking Termux API: {e}")
             return False
     
     def check_root(self):
-        """Check if device has root access"""
+        """Check if device has root access with better error handling"""
         try:
-            result = subprocess.run(['which', 'su'], capture_output=True, timeout=5)
-            if result.returncode == 0:
-                # Try to execute a simple root command
-                test_result = subprocess.run(['su', '-c', 'id'], 
+            # Method 1: Check for su command
+            result = subprocess.run(['which', 'su'], capture_output=True, timeout=3)
+            if result.returncode != 0:
+                return False
+            
+            # Method 2: Try to execute a simple root command with timeout
+            try:
+                test_result = subprocess.run(['timeout', '3', 'su', '-c', 'id'], 
                                            capture_output=True, timeout=5)
-                return test_result.returncode == 0
-            return False
-        except:
+                return test_result.returncode == 0 and 'uid=0' in test_result.stdout.decode()
+            except:
+                # Method 3: Check if we can read root-only files
+                try:
+                    with open('/data/system/users/0/settings_system.xml', 'r') as f:
+                        return True
+                except:
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Error checking root access: {e}")
             return False
     
     def check_device_admin(self):
-        """Check if app has device admin privileges (alternative methods)"""
+        """Check for device admin alternatives with error handling"""
         try:
-            # Check for device admin alternatives
             alternatives = []
             
-            # Check for accessibility service
-            if os.path.exists('/proc/version'):
-                alternatives.append('proc_access')
+            # Check for various system access methods
+            access_checks = [
+                ('/proc/version', 'proc_access'),
+                ('/sys/class/power_supply', 'power_access'),
+                ('/sys/class/net', 'network_access'),
+                ('/proc/meminfo', 'memory_access'),
+                ('/proc/cpuinfo', 'cpu_access')
+            ]
             
-            # Check for notification access
-            result = subprocess.run(['dumpsys', 'notification'], 
-                                  capture_output=True, timeout=5)
-            if result.returncode == 0:
-                alternatives.append('notification_access')
+            for path, access_type in access_checks:
+                try:
+                    if os.path.exists(path) and os.access(path, os.R_OK):
+                        alternatives.append(access_type)
+                except:
+                    continue
+            
+            # Check for notification access (if termux-api available)
+            if self.termux_api:
+                try:
+                    result = subprocess.run(['termux-notification-list'], 
+                                          capture_output=True, timeout=3)
+                    if result.returncode == 0:
+                        alternatives.append('notification_access')
+                except:
+                    pass
             
             return alternatives
-        except:
+            
+        except Exception as e:
+            logger.error(f"Error checking device admin alternatives: {e}")
             return []
     
     def is_authorized(self, user_id):
@@ -223,6 +265,57 @@ class AdvancedTermuxBot:
         
         return InlineKeyboardMarkup(keyboard)
     
+    def get_system_stats(self):
+        """Get system stats with fallback methods for Android/Termux"""
+        stats = {
+            'cpu_percent': 0,
+            'memory_percent': 0,
+            'memory_used': 0,
+            'memory_total': 0
+        }
+        
+        try:
+            # Try to get CPU usage
+            stats['cpu_percent'] = psutil.cpu_percent(interval=0.1)
+        except (PermissionError, OSError):
+            try:
+                # Fallback: use /proc/loadavg
+                with open('/proc/loadavg', 'r') as f:
+                    load_avg = float(f.read().split()[0])
+                    stats['cpu_percent'] = min(load_avg * 25, 100)  # Rough estimate
+            except:
+                stats['cpu_percent'] = 0
+        
+        try:
+            # Try to get memory info
+            memory = psutil.virtual_memory()
+            stats['memory_percent'] = memory.percent
+            stats['memory_used'] = memory.used
+            stats['memory_total'] = memory.total
+        except (PermissionError, OSError):
+            try:
+                # Fallback: use /proc/meminfo
+                with open('/proc/meminfo', 'r') as f:
+                    meminfo = {}
+                    for line in f:
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            meminfo[parts[0][:-1]] = int(parts[1]) * 1024  # Convert kB to bytes
+                    
+                    total = meminfo.get('MemTotal', 0)
+                    available = meminfo.get('MemAvailable', meminfo.get('MemFree', 0))
+                    used = total - available
+                    
+                    stats['memory_total'] = total
+                    stats['memory_used'] = used
+                    stats['memory_percent'] = (used / total * 100) if total > 0 else 0
+            except:
+                stats['memory_percent'] = 0
+                stats['memory_used'] = 0
+                stats['memory_total'] = 0
+        
+        return stats
+
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         
@@ -233,9 +326,15 @@ class AdvancedTermuxBot:
             )
             return
         
-        # System status check
-        cpu_percent = psutil.cpu_percent(interval=1)
-        memory = psutil.virtual_memory()
+        # System status check with error handling
+        try:
+            stats = self.get_system_stats()
+            cpu_percent = stats['cpu_percent']
+            memory_percent = stats['memory_percent']
+        except Exception as e:
+            logger.error(f"Error getting system stats: {e}")
+            cpu_percent = 0
+            memory_percent = 0
         
         api_status = "🟢 Active" if self.termux_api else "🔴 Install Required"
         root_status = "👑 Available" if self.root_available else "🔓 Non-Root Mode"
@@ -251,7 +350,7 @@ class AdvancedTermuxBot:
 ┣ 🔌 Termux API: {api_status}
 ┣ 👑 Root Access: {root_status}
 ┣ 💻 CPU: **{cpu_percent:.1f}%**
-┣ 🧠 RAM: **{memory.percent:.1f}%**
+┣ 🧠 RAM: **{memory_percent:.1f}%**
 ┗ 📁 Directory: `{os.path.basename(self.current_directory)}`
 
 🚀 **New Features v2.0:**
@@ -325,8 +424,12 @@ class AdvancedTermuxBot:
             await query.edit_message_text("🚫 Feature not implemented yet")
     
     async def show_main_menu(self, query):
-        cpu = psutil.cpu_percent(interval=0.1)
-        ram = psutil.virtual_memory().percent
+        try:
+            stats = self.get_system_stats()
+            cpu = stats['cpu_percent']
+            ram = stats['memory_percent']
+        except:
+            cpu = ram = 0
         
         message = f"""
 🔥 **MAIN MENU - TERMUX BOT v2.0**
@@ -413,19 +516,96 @@ du -sh */ | sort -hr
         await query.edit_message_text("📊 Analyzing system performance...")
         
         try:
-            # Comprehensive system analysis
-            cpu_percent = psutil.cpu_percent(interval=1)
-            cpu_count = psutil.cpu_count()
-            memory = psutil.virtual_memory()
-            disk = psutil.disk_usage('/')
-            boot_time = psutil.boot_time()
-            uptime = datetime.now() - datetime.fromtimestamp(boot_time)
+            # Enhanced system analysis with error handling
+            try:
+                stats = self.get_system_stats()
+                cpu_percent = stats['cpu_percent']
+                memory_percent = stats['memory_percent']
+                memory_used = stats['memory_used']
+                memory_total = stats['memory_total']
+            except Exception as e:
+                logger.error(f"Error getting system stats: {e}")
+                cpu_percent = 0
+                memory_percent = 0
+                memory_used = 0
+                memory_total = 0
             
-            # Network stats
-            net_io = psutil.net_io_counters()
+            try:
+                cpu_count = psutil.cpu_count() or 1
+            except:
+                cpu_count = 1
             
-            # Process info
-            processes = len(psutil.pids())
+            try:
+                disk = psutil.disk_usage('/')
+            except:
+                # Fallback for disk usage
+                try:
+                    result = subprocess.run(['df', '/'], capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        lines = result.stdout.strip().split('\n')
+                        if len(lines) > 1:
+                            parts = lines[1].split()
+                            if len(parts) >= 4:
+                                total = int(parts[1]) * 1024  # Convert KB to bytes
+                                used = int(parts[2]) * 1024
+                                free = int(parts[3]) * 1024
+                                
+                                class DiskUsage:
+                                    def __init__(self, total, used, free):
+                                        self.total = total
+                                        self.used = used
+                                        self.free = free
+                                
+                                disk = DiskUsage(total, used, free)
+                            else:
+                                raise Exception("Invalid df output")
+                        else:
+                            raise Exception("No df data")
+                    else:
+                        raise Exception("df command failed")
+                except Exception as e:
+                    logger.error(f"Error getting disk usage: {e}")
+                    class DiskUsage:
+                        def __init__(self):
+                            self.total = 0
+                            self.used = 0
+                            self.free = 0
+                    disk = DiskUsage()
+            
+            try:
+                boot_time = psutil.boot_time()
+                uptime = datetime.now() - datetime.fromtimestamp(boot_time)
+            except:
+                try:
+                    # Fallback: use /proc/uptime
+                    with open('/proc/uptime', 'r') as f:
+                        uptime_seconds = float(f.read().split()[0])
+                        uptime = timedelta(seconds=uptime_seconds)
+                except:
+                    uptime = timedelta(0)
+            
+            # Network stats with fallback
+            try:
+                net_io = psutil.net_io_counters()
+                bytes_sent = net_io.bytes_sent
+                bytes_recv = net_io.bytes_recv
+                packets_sent = net_io.packets_sent
+                packets_recv = net_io.packets_recv
+            except:
+                bytes_sent = bytes_recv = packets_sent = packets_recv = 0
+            
+            # Process count with fallback
+            try:
+                processes = len(psutil.pids())
+            except:
+                try:
+                    result = subprocess.run(['ps', '-A'], capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        processes = len(result.stdout.strip().split('\n')) - 1  # Exclude header
+                    else:
+                        processes = 0
+                except:
+                    processes = 0
             
             # Temperature (if available)
             temp_info = "N/A"
@@ -437,12 +617,25 @@ du -sh */ | sort -hr
                         temp_data = json.loads(temp_result.stdout)
                         temp_info = f"{temp_data.get('temperature', 'N/A')}°C"
             except:
-                pass
+                # Try thermal zone fallback
+                try:
+                    thermal_files = ['/sys/class/thermal/thermal_zone0/temp',
+                                   '/sys/class/thermal/thermal_zone1/temp']
+                    for thermal_file in thermal_files:
+                        if os.path.exists(thermal_file):
+                            with open(thermal_file, 'r') as f:
+                                temp_millicelsius = int(f.read().strip())
+                                temp_celsius = temp_millicelsius / 1000
+                                temp_info = f"{temp_celsius:.1f}°C"
+                                break
+                except:
+                    pass
             
             # Create enhanced progress bars
             cpu_bar = self.create_progress_bar(cpu_percent, 25, "🔥")
-            ram_bar = self.create_progress_bar(memory.percent, 25, "🧠")
-            disk_bar = self.create_progress_bar((disk.used/disk.total)*100, 25, "💾")
+            ram_bar = self.create_progress_bar(memory_percent, 25, "🧠")
+            disk_percent = (disk.used/disk.total*100) if disk.total > 0 else 0
+            disk_bar = self.create_progress_bar(disk_percent, 25, "💾")
             
             message = f"""
 📊 **SYSTEM PERFORMANCE MONITOR**
@@ -455,9 +648,9 @@ du -sh */ | sort -hr
 
 🧠 **Memory Usage:**
 {ram_bar}
-┣ Used: **{memory.used//1024//1024:,}MB** / **{memory.total//1024//1024:,}MB**
-┣ Available: **{memory.available//1024//1024:,}MB**
-┗ Cached: **{memory.cached//1024//1024:,}MB**
+┣ Used: **{memory_used//1024//1024:,}MB** / **{memory_total//1024//1024:,}MB**
+┣ Available: **{(memory_total-memory_used)//1024//1024:,}MB**
+┗ Percentage: **{memory_percent:.1f}%**
 
 💾 **Storage Usage:**
 {disk_bar}
@@ -465,9 +658,9 @@ du -sh */ | sort -hr
 ┗ Free: **{disk.free//1024//1024//1024:.1f}GB**
 
 🌐 **Network Activity:**
-┣ 📤 Sent: **{net_io.bytes_sent//1024//1024:.1f}MB**
-┣ 📥 Received: **{net_io.bytes_recv//1024//1024:.1f}MB**
-┗ 📊 Packets: **{net_io.packets_sent + net_io.packets_recv:,}**
+┣ 📤 Sent: **{bytes_sent//1024//1024:.1f}MB**
+┣ 📥 Received: **{bytes_recv//1024//1024:.1f}MB**
+┗ 📊 Packets: **{packets_sent + packets_recv:,}**
 
 ⚡ **System Info:**
 ┣ 📈 Processes: **{processes}**
