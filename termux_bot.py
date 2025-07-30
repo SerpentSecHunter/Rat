@@ -247,15 +247,15 @@ def send_welcome(message):
         f"📌 *Fitur yang tersedia*:\n"
         f"- Install library Termux\n"
         f"- Lihat library terinstall\n"
-        f- Kontrol penuh Termux\n"
+        f"- Kontrol penuh Termux\n"
         f"- Manajemen file/folder\n"
-        f- Kontrol WiFi dan senter\n"
+        f"- Kontrol WiFi dan senter\n"
         f"- Tanam bot di Termux\n\n"
         f"ℹ️ Gunakan /help untuk melihat panduan penggunaan"
     )
     
     bot.reply_to(message, welcome_msg, parse_mode='Markdown')
-
+    
 # Handler untuk perintah help
 @bot.message_handler(commands=['help'])
 def send_help(message):
